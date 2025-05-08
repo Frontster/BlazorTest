@@ -12,6 +12,52 @@
     <link href="BlazorTest.styles.css" rel="stylesheet" />
     <!-- Chart.js for Reports page -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+
+    <!-- Layout fix styles -->
+    <style>
+        /* Force column layout for the page */
+        .page {
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 100vh !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+
+        /* Important overrides for edge cases */
+        header, main {
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+
+        /* Progress bar styles */
+        .progress {
+            height: 1rem;
+            background-color: #e9ecef;
+            border-radius: 0.25rem;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            overflow: hidden;
+            color: #fff;
+            text-align: center;
+            white-space: nowrap;
+            background-color: #0d6efd;
+            transition: width 0.6s ease;
+        }
+
+        /* Fix for flex layout at higher resolutions */
+        @media (min-width: 641px) {
+            .page {
+                flex-direction: column !important;
+            }
+        }
+    </style>
 </head>
 
 <body>
@@ -36,55 +82,102 @@
 
     <!-- Custom JS for Chart rendering in Reports page -->
     <script>
+        // Store chart instances globally to manage them properly
+        window.chartInstances = {};
+
         // This function will be called from Blazor components
         window.renderChart = (canvasId, labels, data, title) => {
-            const ctx = document.getElementById(canvasId).getContext('2d');
+            try {
+                console.log(`Rendering chart on canvas: ${canvasId}`);
 
-            // Destroy existing chart if it exists
-            if (window.revenueChart) {
-                window.revenueChart.destroy();
-            }
+                const canvas = document.getElementById(canvasId);
+                if (!canvas) {
+                    console.error(`Canvas element with ID ${canvasId} not found`);
+                    return false;
+                }
 
-            // Create new chart
-            window.revenueChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: title,
-                        data: data,
-                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                        borderColor: 'rgba(54, 162, 235, 1)',
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return '$' + value.toLocaleString();
-                                }
-                            }
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return '$' + context.parsed.y.toLocaleString();
-                                }
-                            }
-                        }
+                const ctx = canvas.getContext('2d');
+
+                // Safe chart destruction
+                if (window.chartInstances[canvasId]) {
+                    try {
+                        window.chartInstances[canvasId].destroy();
+                        console.log(`Previous chart instance destroyed for ${canvasId}`);
+                    } catch (destroyError) {
+                        console.warn(`Error destroying chart: ${destroyError}`);
+                        // Continue anyway
                     }
                 }
-            });
 
-            return true;
+                // Create new chart with error handling
+                try {
+                    window.chartInstances[canvasId] = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: title,
+                                data: data,
+                                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                                borderColor: 'rgba(54, 162, 235, 1)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function (value) {
+                                            return '$' + value.toLocaleString();
+                                        }
+                                    }
+                                }
+                            },
+                            plugins: {
+                                tooltip: {
+                                    callbacks: {
+                                        label: function (context) {
+                                            return '$' + context.parsed.y.toLocaleString();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    console.log(`Chart created successfully for ${canvasId}`);
+                    return true;
+                } catch (chartError) {
+                    console.error(`Error creating chart: ${chartError}`);
+                    return false;
+                }
+            } catch (error) {
+                console.error(`Error in renderChart function: ${error}`);
+                return false;
+            }
         };
+
+        // Fix layout issues after page load
+        window.onload = function () {
+            // Force layout recalculation
+            setTimeout(function () {
+                const pageElement = document.querySelector('.page');
+                if (pageElement) {
+                    // Force recalculation by touching the DOM
+                    pageElement.style.display = 'flex';
+                    pageElement.style.flexDirection = 'column';
+                    console.log("Applied layout fix to .page element");
+                }
+            }, 500);
+        };
+
+        // Log Blazor startup for debugging
+        Blazor.start().then(() => {
+            console.log("Blazor started successfully");
+        });
     </script>
 </body>
 

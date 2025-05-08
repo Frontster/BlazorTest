@@ -13,3 +13,11 @@
         </LayoutView>
     </NotFound>
 </Router>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Console.WriteLine("App.OnInitialized: Application starting");
+        base.OnInitialized();
+    }
+}

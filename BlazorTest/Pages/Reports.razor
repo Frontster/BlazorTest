@@ -1,9 +1,11 @@
 ﻿@page "/reports"
+@using BlazorTest.Models
+@using BlazorTest.Services
 @inject DataService DataService
 @inject AppStateService AppState
 @inject AuthService AuthService
 @inject NavigationManager NavigationManager
-@inject ChartJsInterop ChartJs
+@inject IJSRuntime JSRuntime
 @implements IDisposable
 
 <PageTitle>Reports - Blazor Learning App</PageTitle>
@@ -18,8 +20,8 @@ else
 {
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Reports - @AppState.SelectedCategory</h1>
-        <button class="btn btn-outline-primary" @onclick="RefreshReportAsync" disabled="@AppState.IsLoading">
-            @if (AppState.IsLoading)
+        <button class="btn btn-outline-primary" @onclick="RefreshReportAsync" disabled="@isRefreshing">
+            @if (isRefreshing)
             {
                 <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
             }
@@ -139,13 +141,18 @@ else
     private bool isAuthenticated;
     private bool isChartLoading = false;
     private bool isExporting = false;
+    private bool isRefreshing = false;
     private bool showExportNotification = false;
     private string exportType = string.Empty;
+    private CancellationTokenSource? refreshCancellationTokenSource;
 
     protected override async Task OnInitializedAsync()
     {
+        Console.WriteLine("Reports.OnInitializedAsync: Initializing");
+        
         // Check authentication status
         isAuthenticated = await AuthService.IsAuthenticatedAsync();
+        Console.WriteLine($"Reports.OnInitializedAsync: IsAuthenticated: {isAuthenticated}");
 
         if (isAuthenticated)
         {
@@ -158,12 +165,15 @@ else
         else
         {
             // Redirect to login if not authenticated
+            Console.WriteLine("Reports.OnInitializedAsync: Not authenticated, redirecting to login");
             NavigationManager.NavigateTo("login");
         }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        Console.WriteLine($"Reports.OnAfterRenderAsync: FirstRender: {firstRender}");
+        
         // Initialize the chart after the component has rendered
         if (reportData != null && (firstRender || !isChartLoading))
         {
@@ -177,13 +187,30 @@ else
     /// </summary>
     private async Task LoadReportAsync()
     {
-        // The DataService.GetReportDataAsync method has its own internal loading state
-        reportData = await DataService.GetReportDataAsync();
-
-        // Schedule chart rendering after data is loaded
-        if (reportData != null)
+        Console.WriteLine("Reports.LoadReportAsync: Loading report data");
+        
+        try
         {
-            await RenderChartAsync();
+            CancellationToken cancellationToken = 
+                refreshCancellationTokenSource?.Token ?? CancellationToken.None;
+                
+            // The DataService.GetReportDataAsync method has its own internal loading state
+            reportData = await DataService.GetReportDataAsync(cancellationToken);
+            Console.WriteLine("Reports.LoadReportAsync: Report data loaded successfully");
+            
+            // Schedule chart rendering after data is loaded
+            if (reportData != null)
+            {
+                await RenderChartAsync();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Reports.LoadReportAsync: Operation was cancelled");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Reports.LoadReportAsync: Error loading report data: {ex.Message}");
         }
     }
 
@@ -193,7 +220,10 @@ else
     private async Task RenderChartAsync()
     {
         if (reportData == null || reportData.MonthlyRevenue == null)
+        {
+            Console.WriteLine("Reports.RenderChartAsync: No report data available to render chart");
             return;
+        }
 
         isChartLoading = true;
         StateHasChanged();
@@ -205,14 +235,16 @@ else
 
             // Extract data for the chart
             var labels = reportData.MonthlyRevenue.Select(m => m.Month).ToList();
-            var data = reportData.MonthlyRevenue.Select(m => m.Revenue).ToList();
+            var data = reportData.MonthlyRevenue.Select(m => (double)m.Revenue).ToList();
 
             // Render the chart using JavaScript interop
-            await ChartJs.RenderChartAsync("revenueChart", labels, data, "Monthly Revenue");
+            Console.WriteLine("Reports.RenderChartAsync: Calling JS to render chart");
+            await JSRuntime.InvokeVoidAsync("renderChart", "revenueChart", labels, data, "Monthly Revenue");
+            Console.WriteLine("Reports.RenderChartAsync: Chart rendered successfully");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error rendering chart: {ex.Message}");
+            Console.Error.WriteLine($"Reports.RenderChartAsync: Error rendering chart: {ex.Message}");
         }
         finally
         {
@@ -227,9 +259,24 @@ else
     /// </summary>
     private void AppStateChanged()
     {
-        // This will be invoked when the selected category changes
-        // State has already changed in the AppState service, so we just need to re-render
-        StateHasChanged();
+        Console.WriteLine("Reports.AppStateChanged: AppState changed");
+        
+        // Use InvokeAsync to avoid threading issues
+        InvokeAsync(async () => {
+            try
+            {
+                // Only reload if we're not already refreshing
+                if (!isRefreshing)
+                {
+                    await LoadReportAsync();
+                    StateHasChanged();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Reports.AppStateChanged: Error refreshing data: {ex.Message}");
+            }
+        });
     }
 
     /// <summary>
@@ -237,7 +284,46 @@ else
     /// </summary>
     private async Task RefreshReportAsync()
     {
-        await LoadReportAsync();
+        // Prevent multiple refreshes
+        if (isRefreshing)
+        {
+            Console.WriteLine("Reports.RefreshReportAsync: Already refreshing, ignoring request");
+            return;
+        }
+
+        Console.WriteLine("Reports.RefreshReportAsync: Manual refresh requested");
+        
+        try
+        {
+            // Cancel any existing refresh operation
+            refreshCancellationTokenSource?.Cancel();
+            refreshCancellationTokenSource = new CancellationTokenSource();
+            
+            // Set refreshing state
+            isRefreshing = true;
+            StateHasChanged();
+            
+            // Add a timeout of 10 seconds
+            refreshCancellationTokenSource.CancelAfter(10000);
+            
+            // Load data with cancellation token
+            await LoadReportAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Reports.RefreshReportAsync: Operation was cancelled");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Reports.RefreshReportAsync: Error refreshing: {ex.Message}");
+        }
+        finally
+        {
+            // Reset refreshing state
+            isRefreshing = false;
+            StateHasChanged();
+            Console.WriteLine("Reports.RefreshReportAsync: Refresh completed");
+        }
     }
 
     /// <summary>
@@ -245,22 +331,37 @@ else
     /// </summary>
     private async Task ExportPDF()
     {
+        if (isExporting)
+        {
+            return;
+        }
+        
         isExporting = true;
         exportType = "PDF";
         StateHasChanged();
 
-        // Simulate export delay
-        await Task.Delay(2000);
+        try
+        {
+            // Simulate export delay
+            await Task.Delay(2000);
 
-        // In a real application, this would generate and download a PDF file
-        isExporting = false;
-        showExportNotification = true;
-        StateHasChanged();
-
-        // Auto-hide notification after 3 seconds
-        await Task.Delay(3000);
-        showExportNotification = false;
-        StateHasChanged();
+            // In a real application, this would generate and download a PDF file
+            showExportNotification = true;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Reports.ExportPDF: Error exporting to PDF: {ex.Message}");
+        }
+        finally
+        {
+            isExporting = false;
+            StateHasChanged();
+            
+            // Auto-hide notification after 3 seconds
+            await Task.Delay(3000);
+            showExportNotification = false;
+            StateHasChanged();
+        }
     }
 
     /// <summary>
@@ -268,27 +369,49 @@ else
     /// </summary>
     private async Task ExportExcel()
     {
+        if (isExporting)
+        {
+            return;
+        }
+        
         isExporting = true;
         exportType = "Excel";
         StateHasChanged();
 
-        // Simulate export delay
-        await Task.Delay(1500);
+        try
+        {
+            // Simulate export delay
+            await Task.Delay(1500);
 
-        // In a real application, this would generate and download an Excel file
-        isExporting = false;
-        showExportNotification = true;
-        StateHasChanged();
-
-        // Auto-hide notification after 3 seconds
-        await Task.Delay(3000);
-        showExportNotification = false;
-        StateHasChanged();
+            // In a real application, this would generate and download an Excel file
+            showExportNotification = true;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Reports.ExportExcel: Error exporting to Excel: {ex.Message}");
+        }
+        finally
+        {
+            isExporting = false;
+            StateHasChanged();
+            
+            // Auto-hide notification after 3 seconds
+            await Task.Delay(3000);
+            showExportNotification = false;
+            StateHasChanged();
+        }
     }
 
     public void Dispose()
     {
+        Console.WriteLine("Reports.Dispose: Cleaning up resources");
+        
         // Unsubscribe from AppState changes
         AppState.OnChange -= AppStateChanged;
-    }
+        
+        // Cancel any pending operations
+        refreshCancellationTokenSource?.Cancel();
+        refreshCancellationTokenSource?.Dispose();
+    }                                                 
+    
 }

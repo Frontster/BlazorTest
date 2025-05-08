@@ -4,18 +4,20 @@ namespace BlazorTest.Services;
 /// This service manages the global application state including:
 /// - The currently selected category from the dropdown
 /// - Application-wide loading state
+/// - Authentication state
 /// </summary>
 public class AppStateService
 {
     // Selected category from the dropdown
     private string _selectedCategory = string.Empty;
-    public string SelectedCategory 
-    { 
+    public string SelectedCategory
+    {
         get => _selectedCategory;
         set
         {
             if (_selectedCategory != value)
             {
+                Console.WriteLine($"AppStateService: Category changing from '{_selectedCategory}' to '{value}'");
                 _selectedCategory = value;
                 NotifyStateChanged();
             }
@@ -31,6 +33,7 @@ public class AppStateService
         {
             if (_isLoading != value)
             {
+                Console.WriteLine($"AppStateService: IsLoading changing from {_isLoading} to {value}");
                 _isLoading = value;
                 NotifyStateChanged();
             }
@@ -46,39 +49,59 @@ public class AppStateService
         {
             if (_isAuthenticated != value)
             {
+                Console.WriteLine($"AppStateService: IsAuthenticated changing from {_isAuthenticated} to {value}");
                 _isAuthenticated = value;
                 NotifyStateChanged();
             }
         }
     }
 
-    // Event for notifying components about state changes
+    /// <summary>
+    /// Publishes state change events to subscribers
+    /// </summary>
     public event Action? OnChange;
 
-    // Method to notify subscribers about state changes
-    private void NotifyStateChanged() => OnChange?.Invoke();
+    /// <summary>
+    /// Method to notify subscribers about state changes
+    /// </summary>
+    private void NotifyStateChanged()
+    {
+        Console.WriteLine("AppStateService: Notifying state changed");
+        OnChange?.Invoke();
+    }
 
-    // Simulates a loading delay with a cancellable task
+    /// <summary>
+    /// Simulates a loading delay with a cancellable task
+    /// </summary>
+    /// <param name="milliseconds">The delay in milliseconds</param>
     public async Task SimulateLoadingAsync(int milliseconds = 1000)
     {
         IsLoading = true;
+        Console.WriteLine($"AppStateService: Simulating loading for {milliseconds}ms");
         await Task.Delay(milliseconds);
         IsLoading = false;
     }
 
-    // Initialize the app state with default values
+    /// <summary>
+    /// Initialize the app state with default values
+    /// </summary>
     public void InitializeDefaults()
     {
-        // Set default category
+        Console.WriteLine("AppStateService: Initializing defaults");
+        // Set default category if not already set
         if (string.IsNullOrEmpty(_selectedCategory))
         {
             _selectedCategory = "Category 1";
+            Console.WriteLine($"AppStateService: Set default category to {_selectedCategory}");
         }
     }
 
-    // Reset the app state when logging out
+    /// <summary>
+    /// Reset the app state when logging out
+    /// </summary>
     public void Reset()
     {
+        Console.WriteLine("AppStateService: Resetting state");
         IsAuthenticated = false;
         SelectedCategory = string.Empty;
     }

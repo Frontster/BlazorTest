@@ -13,6 +13,7 @@ public class ChartJsInterop
     public ChartJsInterop(IJSRuntime jsRuntime)
     {
         _jsRuntime = jsRuntime;
+        Console.WriteLine("ChartJsInterop: Constructor called");
     }
 
     /// <summary>
@@ -27,11 +28,16 @@ public class ChartJsInterop
     {
         try
         {
-            return await _jsRuntime.InvokeAsync<bool>("renderChart", canvasId, labels, data, title);
+            Console.WriteLine($"ChartJsInterop: Rendering chart on canvas ID '{canvasId}'");
+
+            // Convert decimal values to double for JavaScript
+            var jsData = data.Select(d => (double)d).ToArray();
+
+            return await _jsRuntime.InvokeAsync<bool>("renderChart", canvasId, labels.ToArray(), jsData, title);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error rendering chart: {ex.Message}");
+            Console.Error.WriteLine($"ChartJsInterop: Error rendering chart: {ex.Message}");
             return false;
         }
     }

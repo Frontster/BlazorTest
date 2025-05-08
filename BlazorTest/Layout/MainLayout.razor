@@ -8,64 +8,104 @@
 @implements IDisposable
 
 <div class="page">
-    <div class="sidebar">
-        <NavMenu IsAuthenticated="@IsAuthenticated" />
-    </div>
+    <header>
+        <nav class="navbar navbar-expand-lg navbar-light bg-light">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="">Blazor Learning App</a>
+                <button class="navbar-toggler" type="button" @onclick="ToggleNavMenu">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
 
-    <main>
-        <div class="top-row px-4">
-            @* Navigation Bar with Category Dropdown and Authentication controls *@
-            <div class="d-flex align-items-center">
-                @if (IsAuthenticated)
-                {
-                    <div class="me-4">
-                        @* Category Dropdown - Changes will trigger a refresh of current page data *@
-                        <div class="form-group mb-0">
-                            <select class="form-select" @bind="SelectedCategory" @bind:event="onchange" disabled="@AppState.IsLoading">
-                                @foreach (var category in DataService.AvailableCategories)
+                <div class="@NavMenuCssClass navbar-collapse">
+                    @if (IsAuthenticated)
+                    {
+                        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                                    <span class="oi oi-home" aria-hidden="true"></span> Dashboard
+                                </NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="products">
+                                    <span class="oi oi-list" aria-hidden="true"></span> Products
+                                </NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="users">
+                                    <span class="oi oi-people" aria-hidden="true"></span> Users
+                                </NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="reports">
+                                    <span class="oi oi-bar-chart" aria-hidden="true"></span> Reports
+                                </NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="settings">
+                                    <span class="oi oi-cog" aria-hidden="true"></span> Settings
+                                </NavLink>
+                            </li>
+                        </ul>
+
+                        <div class="d-flex align-items-center">
+                            @if (!string.IsNullOrWhiteSpace(AppState.SelectedCategory))
+                            {
+                                <div class="me-3" style="min-width: 150px;">
+                                    <select class="form-select form-select-sm" @bind="SelectedCategory" @bind:event="onchange" disabled="@AppState.IsLoading">
+                                        @foreach (var category in DataService.AvailableCategories)
+                                        {
+                                            <option value="@category">@category</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+                            <div class="me-3">
+                                <span>Welcome, @UserName</span>
+                            </div>
+                            <button class="btn btn-sm btn-outline-dark" @onclick="LogoutAsync" disabled="@AppState.IsLoading">
+                                @if (AppState.IsLoading)
                                 {
-                                    <option value="@category">@category</option>
+                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    <span> Loading...</span>
                                 }
-                            </select>
+                                else
+                                {
+                                    <span>Logout</span>
+                                }
+                            </button>
                         </div>
-                    </div>
-                    <div class="me-4">
-                        <span>Welcome, @UserName</span>
-                    </div>
-                    <button class="btn btn-sm btn-outline-dark" @onclick="LogoutAsync" disabled="@AppState.IsLoading">
-                        @if (AppState.IsLoading)
-                        {
-                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                            <span> Loading...</span>
-                        }
-                        else
-                        {
-                            <span>Logout</span>
-                        }
-                    </button>
-                }
-                else
-                {
-                    <button class="btn btn-sm btn-outline-primary" @onclick="NavigateToLogin" disabled="@AppState.IsLoading">Login</button>
-                }
+                    }
+                    else
+                    {
+                        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="login">
+                                    <span class="oi oi-account-login" aria-hidden="true"></span> Login
+                                </NavLink>
+                            </li>
+                        </ul>
+                    }
+                </div>
             </div>
-        </div>
+        </nav>
+    </header>
 
-        <article class="content px-4">
-            @* Global Loading Indicator - Shows whenever AppState.IsLoading is true *@
-            <LoadingIndicator IsLoading="@AppState.IsLoading" Fullscreen="true" Message="Loading content..." />
-            
-            @* Main Content Area *@
-            <div class="@(AppState.IsLoading ? "content-loading" : "")">
-                @Body
-            </div>
-        </article>
+    <main class="container-fluid py-4">
+        <!-- Global Loading Indicator - Shows whenever AppState.IsLoading is true -->
+        <LoadingIndicator IsLoading="@AppState.IsLoading" Fullscreen="true" Message="Loading content..." />
+
+        <!-- Main Content Area -->
+        <div class="@(AppState.IsLoading ? "content-loading" : "")">
+            @Body
+        </div>
     </main>
 </div>
 
 @code {
     private bool IsAuthenticated { get; set; }
     private string UserName { get; set; } = string.Empty;
+    private bool collapseNavMenu = true;
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
     // Property for binding to the category dropdown
     private string SelectedCategory
@@ -76,6 +116,7 @@
             if (AppState.SelectedCategory != value)
             {
                 AppState.SelectedCategory = value;
+                Console.WriteLine($"Category changed to: {value}");
                 // Force navigation to same page to trigger a refresh
                 RefreshCurrentPage();
             }
@@ -84,51 +125,84 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Console.WriteLine("MainLayout.OnInitializedAsync called");
         // Check authentication status and get user info
         IsAuthenticated = await AuthService.IsAuthenticatedAsync();
+        Console.WriteLine($"Authentication status: {IsAuthenticated}");
+
         if (IsAuthenticated)
         {
             UserName = await AuthService.GetUserNameAsync();
+            Console.WriteLine($"User logged in: {UserName}");
         }
 
         // Subscribe to AppState changes
-        AppState.OnChange += StateHasChanged;
+        AppState.OnChange += AppStateChanged;
 
-        // Redirect to login if not authenticated
+        // Redirect to login if not authenticated and not already on login page
         if (!IsAuthenticated && !NavigationManager.Uri.Contains("login", StringComparison.OrdinalIgnoreCase))
         {
+            Console.WriteLine("Not authenticated, redirecting to login");
             NavigationManager.NavigateTo("login");
         }
+    }
+
+    private void AppStateChanged()
+    {
+        Console.WriteLine("AppState changed, calling StateHasChanged");
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+        Console.WriteLine($"NavMenu toggled, collapsed: {collapseNavMenu}");
     }
 
     // Refresh the current page when the selected category changes
     private void RefreshCurrentPage()
     {
         var uri = NavigationManager.Uri;
+        Console.WriteLine($"Refreshing current page: {uri}");
         // This forces the components to reload by navigating to the same page
-        NavigationManager.NavigateTo(uri, forceLoad: true);
+        NavigationManager.NavigateTo(uri, forceLoad: false);
     }
 
     private async Task LogoutAsync()
     {
+        Console.WriteLine("Logging out");
         await AuthService.LogoutAsync();
         IsAuthenticated = false;
         NavigationManager.NavigateTo("login");
     }
 
-    private void NavigateToLogin()
-    {
-        NavigationManager.NavigateTo("login");
-    }
-
     public void Dispose()
     {
+        Console.WriteLine("MainLayout.Dispose called, unsubscribing from events");
         // Unsubscribe from AppState changes
-        AppState.OnChange -= StateHasChanged;
+        AppState.OnChange -= AppStateChanged;
     }
 }
 
 <style>
+    .page {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+    }
+
+    main {
+        flex: 1;
+    }
+
+    header {
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
     /* Loading overlay styling */
     .loading-overlay {
         position: absolute;

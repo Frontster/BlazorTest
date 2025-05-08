@@ -23,20 +23,20 @@ else
 
         <div class="row mt-4">
             <!-- Dashboard Stats Cards -->
-            <div class="col-md-6">
-                <div class="card mb-4">
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
                     <div class="card-body">
                         <h5 class="card-title">Total Items</h5>
-                        <h2 class="display-4">@dashboardData.TotalItems</h2>
+                        <div class="display-4 fw-bold">@dashboardData.TotalItems</div>
                     </div>
                 </div>
             </div>
-            <div class="col-md-6">
-                <div class="card mb-4">
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
                     <div class="card-body">
                         <h5 class="card-title">Completed Items</h5>
-                        <h2 class="display-4">@dashboardData.CompletedItems</h2>
-                        <div class="progress mt-2">
+                        <div class="display-4 fw-bold">@dashboardData.CompletedItems</div>
+                        <div class="progress mt-3">
                             <div class="progress-bar" role="progressbar"
                                  style="width: @(dashboardData.CompletedItems * 100 / Math.Max(1, dashboardData.TotalItems))%"
                                  aria-valuenow="@dashboardData.CompletedItems"
@@ -54,8 +54,8 @@ else
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Recent Activity</h5>
-                <button class="btn btn-sm btn-outline-primary" @onclick="RefreshDashboardAsync" disabled="@AppState.IsLoading">
-                    @if (AppState.IsLoading)
+                <button class="btn btn-sm btn-outline-primary" @onclick="RefreshDashboardAsync" disabled="@isRefreshing">
+                    @if (isRefreshing)
                     {
                         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                     }
@@ -98,11 +98,16 @@ else
 @code {
     private DashboardData? dashboardData;
     private bool isAuthenticated;
+    private bool isRefreshing = false;
+    private CancellationTokenSource? refreshCancellationTokenSource;
 
     protected override async Task OnInitializedAsync()
     {
+        Console.WriteLine("Index.OnInitializedAsync: Initializing Dashboard");
+
         // Check authentication status
         isAuthenticated = await AuthService.IsAuthenticatedAsync();
+        Console.WriteLine($"Index.OnInitializedAsync: IsAuthenticated: {isAuthenticated}");
 
         if (isAuthenticated)
         {
@@ -115,7 +120,18 @@ else
         else
         {
             // Redirect to login if not authenticated
+            Console.WriteLine("Index.OnInitializedAsync: Not authenticated, redirecting to login");
             NavigationManager.NavigateTo("login");
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        Console.WriteLine($"Index.OnAfterRender: FirstRender: {firstRender}");
+
+        if (firstRender)
+        {
+            Console.WriteLine("Index.OnAfterRender: First render completed");
         }
     }
 
@@ -125,9 +141,19 @@ else
     /// </summary>
     private async Task LoadDashboardDataAsync()
     {
-        // The DataService.GetDashboardDataAsync method has its own internal loading state
-        // so we don't need to set AppState.IsLoading here
-        dashboardData = await DataService.GetDashboardDataAsync();
+        Console.WriteLine("Index.LoadDashboardDataAsync: Loading dashboard data");
+
+        try
+        {
+            // The DataService.GetDashboardDataAsync method has its own internal loading state
+            dashboardData = await DataService.GetDashboardDataAsync();
+
+            Console.WriteLine($"Index.LoadDashboardDataAsync: Data loaded with title: {dashboardData?.Title}");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error loading dashboard data: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -136,9 +162,25 @@ else
     /// </summary>
     private void AppStateChanged()
     {
-        // This will be invoked when the selected category changes
-        // State has already changed in the AppState service, so we just need to re-render
-        StateHasChanged();
+        Console.WriteLine("Index.AppStateChanged: AppState changed, refreshing data");
+
+        // Check if we're still on this component and not already refreshing
+        if (isAuthenticated && !isRefreshing)
+        {
+            // Use InvokeAsync to avoid threading issues
+            InvokeAsync(async () =>
+            {
+                try
+                {
+                    await LoadDashboardDataAsync();
+                    StateHasChanged();
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error in AppStateChanged: {ex.Message}");
+                }
+            });
+        }
     }
 
     /// <summary>
@@ -146,12 +188,56 @@ else
     /// </summary>
     private async Task RefreshDashboardAsync()
     {
-        await LoadDashboardDataAsync();
+        // Prevent multiple refreshes
+        if (isRefreshing)
+        {
+            Console.WriteLine("Index.RefreshDashboardAsync: Already refreshing, ignoring request");
+            return;
+        }
+
+        Console.WriteLine("Index.RefreshDashboardAsync: Manual refresh requested");
+
+        try
+        {
+            // Cancel any existing refresh operation
+            refreshCancellationTokenSource?.Cancel();
+            refreshCancellationTokenSource = new CancellationTokenSource();
+
+            // Set refreshing state
+            isRefreshing = true;
+            StateHasChanged();
+
+            // Add a timeout of 10 seconds
+            refreshCancellationTokenSource.CancelAfter(10000);
+
+            // Load data with cancellation token
+            await LoadDashboardDataAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Index.RefreshDashboardAsync: Operation was cancelled");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error refreshing dashboard: {ex.Message}");
+        }
+        finally
+        {
+            // Reset refreshing state
+            isRefreshing = false;
+            StateHasChanged();
+            Console.WriteLine("Index.RefreshDashboardAsync: Refresh completed");
+        }
     }
 
     public void Dispose()
     {
+        Console.WriteLine("Index.Dispose: Unsubscribing from AppState changes");
         // Unsubscribe from AppState changes
         AppState.OnChange -= AppStateChanged;
+
+        // Cancel any pending refresh operations
+        refreshCancellationTokenSource?.Cancel();
+        refreshCancellationTokenSource?.Dispose();
     }
 }

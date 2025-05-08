@@ -74,10 +74,15 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Console.WriteLine("Login.OnInitializedAsync: Checking authentication status");
+
         // Check if user is already authenticated
         var isAuthenticated = await AuthService.IsAuthenticatedAsync();
+        Console.WriteLine($"Login.OnInitializedAsync: IsAuthenticated: {isAuthenticated}");
+
         if (isAuthenticated)
         {
+            Console.WriteLine("Login.OnInitializedAsync: User already authenticated, redirecting to home");
             // If already logged in, redirect to home
             NavigationManager.NavigateTo("");
         }
@@ -85,17 +90,22 @@
 
     private async Task HandleLogin()
     {
+        Console.WriteLine($"Login.HandleLogin: Attempting to login user: {loginModel.Username}");
+
         // Call authentication service to attempt login
         var result = await AuthService.LoginAsync(loginModel.Username, loginModel.Password);
+        Console.WriteLine($"Login.HandleLogin: Login result: {result}");
 
         if (result)
         {
             // If login successful, navigate to home page
+            Console.WriteLine("Login.HandleLogin: Login successful, navigating to home");
             NavigationManager.NavigateTo("");
         }
         else
         {
             // Show error message on failed login
+            Console.WriteLine("Login.HandleLogin: Login failed, showing error");
             showError = true;
         }
     }

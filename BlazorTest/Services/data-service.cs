@@ -11,6 +11,7 @@ public class DataService
 {
     private readonly AppStateService _appStateService;
     private readonly Random _random = new Random();
+    private readonly SemaphoreSlim _apiCallLock = new SemaphoreSlim(1, 1);
 
     // Available categories for the dropdown
     public List<string> AvailableCategories { get; } = new List<string>
@@ -25,36 +26,42 @@ public class DataService
     public DataService(AppStateService appStateService)
     {
         _appStateService = appStateService;
+        Console.WriteLine("DataService: Constructor called");
     }
 
     /// <summary>
     /// Fetches dashboard data based on the selected category
     /// </summary>
     /// <returns>Dashboard data model</returns>
-    public async Task<DashboardData> GetDashboardDataAsync()
+    public async Task<DashboardData> GetDashboardDataAsync(CancellationToken cancellationToken = default)
     {
-        await SimulateApiCallAsync(1200);
-        
+        Console.WriteLine($"DataService: Getting dashboard data for category: {_appStateService.SelectedCategory}");
+        await SimulateApiCallAsync(1200, cancellationToken);
+
         var category = _appStateService.SelectedCategory;
-        return new DashboardData
+        var data = new DashboardData
         {
             Title = $"{category} Dashboard",
             TotalItems = _random.Next(100, 500),
             CompletedItems = _random.Next(50, 100),
             RecentActivity = GenerateRecentActivity(category, 5)
         };
+
+        Console.WriteLine($"DataService: Retrieved dashboard data with {data.RecentActivity.Count} activities");
+        return data;
     }
 
     /// <summary>
     /// Fetches product data based on the selected category
     /// </summary>
     /// <returns>List of product models</returns>
-    public async Task<List<Product>> GetProductsAsync()
+    public async Task<List<Product>> GetProductsAsync(CancellationToken cancellationToken = default)
     {
-        await SimulateApiCallAsync(1500);
-        
+        Console.WriteLine($"DataService: Getting products for category: {_appStateService.SelectedCategory}");
+        await SimulateApiCallAsync(1500, cancellationToken);
+
         var category = _appStateService.SelectedCategory;
-        return Enumerable.Range(1, 10)
+        var products = Enumerable.Range(1, 10)
             .Select(i => new Product
             {
                 Id = i,
@@ -64,18 +71,22 @@ public class DataService
                 InStock = _random.Next(0, 50)
             })
             .ToList();
+
+        Console.WriteLine($"DataService: Retrieved {products.Count} products");
+        return products;
     }
 
     /// <summary>
     /// Fetches user data based on the selected category
     /// </summary>
     /// <returns>List of user models</returns>
-    public async Task<List<User>> GetUsersAsync()
+    public async Task<List<User>> GetUsersAsync(CancellationToken cancellationToken = default)
     {
-        await SimulateApiCallAsync(1000);
-        
+        Console.WriteLine($"DataService: Getting users for category: {_appStateService.SelectedCategory}");
+        await SimulateApiCallAsync(1000, cancellationToken);
+
         var category = _appStateService.SelectedCategory;
-        return Enumerable.Range(1, 8)
+        var users = Enumerable.Range(1, 8)
             .Select(i => new User
             {
                 Id = i,
@@ -86,18 +97,22 @@ public class DataService
                 LastActive = DateTime.Now.AddDays(-_random.Next(0, 10))
             })
             .ToList();
+
+        Console.WriteLine($"DataService: Retrieved {users.Count} users");
+        return users;
     }
 
     /// <summary>
     /// Fetches report data based on the selected category
     /// </summary>
     /// <returns>Report data model</returns>
-    public async Task<ReportData> GetReportDataAsync()
+    public async Task<ReportData> GetReportDataAsync(CancellationToken cancellationToken = default)
     {
-        await SimulateApiCallAsync(1800);
-        
+        Console.WriteLine($"DataService: Getting report data for category: {_appStateService.SelectedCategory}");
+        await SimulateApiCallAsync(1800, cancellationToken);
+
         var category = _appStateService.SelectedCategory;
-        return new ReportData
+        var reportData = new ReportData
         {
             ReportTitle = $"{category} Performance Report",
             GeneratedAt = DateTime.Now,
@@ -110,18 +125,22 @@ public class DataService
                 .ToList(),
             Summary = $"This is a summary of {category} performance over the last year."
         };
+
+        Console.WriteLine($"DataService: Retrieved report data with {reportData.MonthlyRevenue.Count} revenue entries");
+        return reportData;
     }
 
     /// <summary>
     /// Fetches settings data based on the selected category
     /// </summary>
     /// <returns>Settings data model</returns>
-    public async Task<SettingsData> GetSettingsAsync()
+    public async Task<SettingsData> GetSettingsAsync(CancellationToken cancellationToken = default)
     {
-        await SimulateApiCallAsync(800);
-        
+        Console.WriteLine($"DataService: Getting settings for category: {_appStateService.SelectedCategory}");
+        await SimulateApiCallAsync(800, cancellationToken);
+
         var category = _appStateService.SelectedCategory;
-        return new SettingsData
+        var settings = new SettingsData
         {
             CategorySettings = new CategorySettings
             {
@@ -134,20 +153,48 @@ public class DataService
             {
                 Theme = _random.Next(0, 2) == 1 ? "Light" : "Dark",
                 Language = _random.Next(0, 3) == 0 ? "English" : _random.Next(0, 2) == 0 ? "Spanish" : "French",
-                PageSize = _random.Next(10, 51)
+                PageSize = (new int[] { 10, 20, 30, 40, 50 })[_random.Next(0, 5)]
             }
         };
+
+        Console.WriteLine($"DataService: Retrieved settings with theme: {settings.UserPreferences.Theme}");
+        return settings;
     }
 
     /// <summary>
     /// Simulates an API call with a delay
     /// </summary>
     /// <param name="maxDelay">Maximum delay in milliseconds</param>
-    private async Task SimulateApiCallAsync(int maxDelay)
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    private async Task SimulateApiCallAsync(int maxDelay, CancellationToken cancellationToken = default)
     {
-        _appStateService.IsLoading = true;
-        await Task.Delay(_random.Next(500, maxDelay));
-        _appStateService.IsLoading = false;
+        // Use a lock to prevent multiple API calls from interfering with loading state
+        await _apiCallLock.WaitAsync(cancellationToken);
+
+        try
+        {
+            _appStateService.IsLoading = true;
+            var delay = _random.Next(500, maxDelay);
+            Console.WriteLine($"DataService: Simulating API call with {delay}ms delay");
+
+            // Use task delay with cancellation token
+            await Task.Delay(delay, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("DataService: API call was cancelled");
+            throw; // Re-throw to allow caller to handle
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"DataService: Error during API call simulation: {ex.Message}");
+            throw; // Re-throw to allow caller to handle
+        }
+        finally
+        {
+            _appStateService.IsLoading = false;
+            _apiCallLock.Release();
+        }
     }
 
     /// <summary>
@@ -162,7 +209,7 @@ public class DataService
         {
             "added a new item",
             "updated settings",
-            "removed an item", 
+            "removed an item",
             "generated a report",
             "modified user permissions",
             "created a new user",
@@ -175,7 +222,7 @@ public class DataService
             "John", "Jane", "Mike", "Sarah", "David", "Emma"
         };
 
-        return Enumerable.Range(1, count)
+        var result = Enumerable.Range(1, count)
             .Select(i => new ActivityItem
             {
                 User = users[_random.Next(users.Count)],
@@ -184,5 +231,8 @@ public class DataService
                 Category = category
             })
             .ToList();
+
+        Console.WriteLine($"DataService: Generated {result.Count} activity items");
+        return result;
     }
 }
