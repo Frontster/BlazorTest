@@ -1,0 +1,215 @@
+﻿@page "/users"
+@using BlazorTest.Models
+@using BlazorTest.Services
+@inject DataService DataService
+@inject AppStateService AppState
+@inject AuthService AuthService
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<PageTitle>Users - Blazor Learning App</PageTitle>
+
+@if (!isAuthenticated)
+{
+    <div class="alert alert-warning">
+        Please login to view users.
+    </div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Users - @AppState.SelectedCategory</h1>
+        <button class="btn btn-outline-primary" @onclick="RefreshUsersAsync" disabled="@AppState.IsLoading">
+            @if (AppState.IsLoading)
+            {
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            }
+            else
+            {
+                <span class="oi oi-reload" aria-hidden="true"></span>
+            }
+            Refresh
+        </button>
+    </div>
+
+    <!-- Users Table -->
+    @if (users != null && users.Any())
+    {
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Username</th>
+                                <th>Full Name</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Last Active</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var user in users)
+                            {
+                                <tr>
+                                    <td>@user.Id</td>
+                                    <td>@user.UserName</td>
+                                    <td>@user.FullName</td>
+                                    <td>@user.Email</td>
+                                    <td>
+                                        <span class="badge @(user.Role == "Admin" ? "bg-danger" : "bg-primary")">
+                                            @user.Role
+                                        </span>
+                                    </td>
+                                    <td>@user.LastActive.ToString("g")</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" @onclick="() => ShowUserDetails(user.Id)">
+                                                <span class="oi oi-eye" aria-hidden="true"></span>
+                                            </button>
+                                            <button class="btn btn-outline-secondary" @onclick="() => EditUser(user.Id)">
+                                                <span class="oi oi-pencil" aria-hidden="true"></span>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+    else if (!AppState.IsLoading)
+    {
+        <!-- Show when no users are found and not loading -->
+        <div class="alert alert-info">
+            No users found for the selected category.
+        </div>
+    }
+
+    <!-- User Details Modal -->
+    @if (selectedUser != null)
+    {
+        <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">User Details</h5>
+                        <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">@selectedUser.FullName</h5>
+                                <h6 class="card-subtitle mb-2 text-muted">@selectedUser.UserName</h6>
+                                <p><strong>Email:</strong> @selectedUser.Email</p>
+                                <p><strong>Role:</strong> @selectedUser.Role</p>
+                                <p><strong>Last Active:</strong> @selectedUser.LastActive.ToString("g")</p>
+                                <p><strong>Category:</strong> @AppState.SelectedCategory</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseModal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-backdrop fade show"></div>
+    }
+}
+
+@code {
+    private List<User>? users;
+    private User? selectedUser;
+    private bool isAuthenticated;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check authentication status
+        isAuthenticated = await AuthService.IsAuthenticatedAsync();
+
+        if (isAuthenticated)
+        {
+            // Fetch users data on initialization
+            await LoadUsersAsync();
+
+            // Subscribe to AppState changes (e.g., when category changes)
+            AppState.OnChange += AppStateChanged;
+        }
+        else
+        {
+            // Redirect to login if not authenticated
+            NavigationManager.NavigateTo("login");
+        }
+    }
+
+    /// <summary>
+    /// Loads user data from the DataService
+    /// This method is called on initialization and when the Refresh button is clicked
+    /// </summary>
+    private async Task LoadUsersAsync()
+    {
+        // The DataService.GetUsersAsync method has its own internal loading state
+        users = await DataService.GetUsersAsync();
+    }
+
+    /// <summary>
+    /// Handles changes in the AppState (when the dropdown value changes)
+    /// Forces a refresh of the users data
+    /// </summary>
+    private void AppStateChanged()
+    {
+        // This will be invoked when the selected category changes
+        // State has already changed in the AppState service, so we just need to re-render
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Manually refreshes the users data when the Refresh button is clicked
+    /// </summary>
+    private async Task RefreshUsersAsync()
+    {
+        await LoadUsersAsync();
+    }
+
+    /// <summary>
+    /// Shows user details in a modal
+    /// </summary>
+    /// <param name="userId">The ID of the user to show details for</param>
+    private void ShowUserDetails(int userId)
+    {
+        if (users != null)
+        {
+            selectedUser = users.FirstOrDefault(u => u.Id == userId);
+        }
+    }
+
+    /// <summary>
+    /// Handles editing a user (just a placeholder in this demo)
+    /// </summary>
+    /// <param name="userId">The ID of the user to edit</param>
+    private void EditUser(int userId)
+    {
+        // In a real application, you would navigate to an edit page or show an edit modal
+        // For this demo, we'll just show an alert
+        // This would typically be implemented with a form and API calls
+    }
+
+    /// <summary>
+    /// Closes the user details modal
+    /// </summary>
+    private void CloseModal()
+    {
+        selectedUser = null;
+    }
+
+    public void Dispose()
+    {
+        // Unsubscribe from AppState changes
+        AppState.OnChange -= AppStateChanged;
+    }
+}

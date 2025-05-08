@@ -1,0 +1,42 @@
+﻿@page "/404"
+@inject NavigationManager NavigationManager
+
+<PageTitle>Page Not Found - Blazor Learning App</PageTitle>
+
+<div class="container text-center my-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-body p-5">
+                    <div class="display-1 text-muted mb-4">404</div>
+                    <h1 class="h3 mb-4">Oops! Page not found</h1>
+                    <p class="text-muted mb-4">
+                        We couldn't find the page you're looking for.
+                        It might have been moved or doesn't exist.
+                    </p>
+                    <div class="d-flex justify-content-center gap-3">
+                        <button class="btn btn-primary" @onclick="NavigateToHome">
+                            <span class="oi oi-home me-2" aria-hidden="true"></span> Go to Home
+                        </button>
+                        <button class="btn btn-outline-secondary" @onclick="NavigateBack">
+                            <span class="oi oi-arrow-left me-2" aria-hidden="true"></span> Go Back
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private void NavigateToHome()
+    {
+        NavigationManager.NavigateTo("/");
+    }
+
+    private void NavigateBack()
+    {
+        // Use JavaScript to go back in browser history
+        NavigationManager.NavigateTo("javascript:history.back()");
+    }
+}

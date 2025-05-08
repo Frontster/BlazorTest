@@ -1,0 +1,261 @@
+﻿@page "/settings"
+@using BlazorTest.Models
+@using BlazorTest.Services
+@inject DataService DataService
+@inject AppStateService AppState
+@inject AuthService AuthService
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<PageTitle>Settings - Blazor Learning App</PageTitle>
+
+@if (!isAuthenticated)
+{
+    <div class="alert alert-warning">
+        Please login to view settings.
+    </div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Settings - @AppState.SelectedCategory</h1>
+        <button class="btn btn-outline-primary" @onclick="RefreshSettingsAsync" disabled="@AppState.IsLoading">
+            @if (AppState.IsLoading)
+            {
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            }
+            else
+            {
+                <span class="oi oi-reload" aria-hidden="true"></span>
+            }
+            Refresh
+        </button>
+    </div>
+
+    @if (settings != null)
+    {
+        <div class="row">
+            <!-- Category Settings -->
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Category Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <EditForm Model="@settings.CategorySettings" OnValidSubmit="SaveCategorySettings">
+                            <DataAnnotationsValidator />
+
+                            <div class="mb-3">
+                                <label for="displayName" class="form-label">Display Name</label>
+                                <InputText id="displayName" @bind-Value="settings.CategorySettings.DisplayName" class="form-control" disabled="@isSaving" />
+                            </div>
+
+                            <div class="mb-3 form-check">
+                                <InputCheckbox id="notifications" @bind-Value="settings.CategorySettings.Notifications" class="form-check-input" disabled="@isSaving" />
+                                <label class="form-check-label" for="notifications">Enable Notifications</label>
+                            </div>
+
+                            <div class="mb-3 form-check">
+                                <InputCheckbox id="autoRefresh" @bind-Value="settings.CategorySettings.AutoRefresh" class="form-check-input" disabled="@isSaving" />
+                                <label class="form-check-label" for="autoRefresh">Auto Refresh</label>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="refreshInterval" class="form-label">Refresh Interval (seconds)</label>
+                                <InputNumber id="refreshInterval" @bind-Value="settings.CategorySettings.RefreshInterval" class="form-control" disabled="@(!settings.CategorySettings.AutoRefresh || isSaving)" />
+                            </div>
+
+                            <button type="submit" class="btn btn-primary" disabled="@isSaving">
+                                @if (isSaving)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    <span> Saving...</span>
+                                }
+                                else
+                                {
+                                    <span>Save Category Settings</span>
+                                }
+                            </button>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Preferences -->
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">User Preferences</h5>
+                    </div>
+                    <div class="card-body">
+                        <EditForm Model="@settings.UserPreferences" OnValidSubmit="SaveUserPreferences">
+                            <DataAnnotationsValidator />
+
+                            <div class="mb-3">
+                                <label for="theme" class="form-label">Theme</label>
+                                <InputSelect id="theme" @bind-Value="settings.UserPreferences.Theme" class="form-select" disabled="@isSaving">
+                                    <option value="Light">Light</option>
+                                    <option value="Dark">Dark</option>
+                                    <option value="System">System Default</option>
+                                </InputSelect>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="language" class="form-label">Language</label>
+                                <InputSelect id="language" @bind-Value="settings.UserPreferences.Language" class="form-select" disabled="@isSaving">
+                                    <option value="English">English</option>
+                                    <option value="Spanish">Spanish</option>
+                                    <option value="French">French</option>
+                                    <option value="German">German</option>
+                                </InputSelect>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="pageSize" class="form-label">Items Per Page</label>
+                                <InputSelect id="pageSize" @bind-Value="settings.UserPreferences.PageSize" class="form-select" disabled="@isSaving">
+                                    <option value="10">10</option>
+                                    <option value="20">20</option>
+                                    <option value="30">30</option>
+                                    <option value="40">40</option>
+                                    <option value="50">50</option>
+                                </InputSelect>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary" disabled="@isSaving">
+                                @if (isSaving)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    <span> Saving...</span>
+                                }
+                                else
+                                {
+                                    <span>Save User Preferences</span>
+                                }
+                            </button>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notifications -->
+        @if (showSavedNotification)
+        {
+            <div class="toast-container position-fixed bottom-0 end-0 p-3">
+                <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header">
+                        <strong class="me-auto">Settings</strong>
+                        <button type="button" class="btn-close" @onclick="() => showSavedNotification = false"></button>
+                    </div>
+                    <div class="toast-body bg-success text-white">
+                        Settings saved successfully!
+                    </div>
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    private SettingsData? settings;
+    private bool isAuthenticated;
+    private bool isSaving;
+    private bool showSavedNotification;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check authentication status
+        isAuthenticated = await AuthService.IsAuthenticatedAsync();
+
+        if (isAuthenticated)
+        {
+            // Fetch settings data on initialization
+            await LoadSettingsAsync();
+
+            // Subscribe to AppState changes (e.g., when category changes)
+            AppState.OnChange += AppStateChanged;
+        }
+        else
+        {
+            // Redirect to login if not authenticated
+            NavigationManager.NavigateTo("login");
+        }
+    }
+
+    /// <summary>
+    /// Loads settings data from the DataService
+    /// This method is called on initialization and when the Refresh button is clicked
+    /// </summary>
+    private async Task LoadSettingsAsync()
+    {
+        // The DataService.GetSettingsAsync method has its own internal loading state
+        settings = await DataService.GetSettingsAsync();
+    }
+
+    /// <summary>
+    /// Handles changes in the AppState (when the dropdown value changes)
+    /// Forces a refresh of the settings data
+    /// </summary>
+    private void AppStateChanged()
+    {
+        // This will be invoked when the selected category changes
+        // State has already changed in the AppState service, so we just need to re-render
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Manually refreshes the settings data when the Refresh button is clicked
+    /// </summary>
+    private async Task RefreshSettingsAsync()
+    {
+        await LoadSettingsAsync();
+    }
+
+    /// <summary>
+    /// Saves category settings with a simulated API call
+    /// </summary>
+    private async Task SaveCategorySettings()
+    {
+        isSaving = true;
+
+        // Simulate API call delay
+        await Task.Delay(1500);
+
+        // In a real app, this would make an API call to save the settings
+
+        isSaving = false;
+        showSavedNotification = true;
+
+        // Auto-hide notification after 3 seconds
+        await Task.Delay(3000);
+        showSavedNotification = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Saves user preferences with a simulated API call
+    /// </summary>
+    private async Task SaveUserPreferences()
+    {
+        isSaving = true;
+
+        // Simulate API call delay
+        await Task.Delay(1500);
+
+        // In a real app, this would make an API call to save the preferences
+
+        isSaving = false;
+        showSavedNotification = true;
+
+        // Auto-hide notification after 3 seconds
+        await Task.Delay(3000);
+        showSavedNotification = false;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        // Unsubscribe from AppState changes
+        AppState.OnChange -= AppStateChanged;
+    }
+}

@@ -1,0 +1,294 @@
+﻿@page "/reports"
+@inject DataService DataService
+@inject AppStateService AppState
+@inject AuthService AuthService
+@inject NavigationManager NavigationManager
+@inject ChartJsInterop ChartJs
+@implements IDisposable
+
+<PageTitle>Reports - Blazor Learning App</PageTitle>
+
+@if (!isAuthenticated)
+{
+    <div class="alert alert-warning">
+        Please login to view reports.
+    </div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Reports - @AppState.SelectedCategory</h1>
+        <button class="btn btn-outline-primary" @onclick="RefreshReportAsync" disabled="@AppState.IsLoading">
+            @if (AppState.IsLoading)
+            {
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            }
+            else
+            {
+                <span class="oi oi-reload" aria-hidden="true"></span>
+            }
+            Refresh
+        </button>
+    </div>
+
+    @if (reportData != null)
+    {
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">@reportData.ReportTitle</h5>
+                <small class="text-muted">Generated: @reportData.GeneratedAt.ToString("g")</small>
+            </div>
+            <div class="card-body">
+                <p class="lead">@reportData.Summary</p>
+
+                <!-- Revenue Chart -->
+                <h5 class="mt-4">Monthly Revenue</h5>
+                <div class="chart-container" style="position: relative; height:300px;">
+                    @if (isChartLoading)
+                    {
+                        <div class="d-flex justify-content-center align-items-center" style="height:300px;">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading chart...</span>
+                            </div>
+                            <span class="ms-2">Rendering chart...</span>
+                        </div>
+                    }
+                    <canvas id="revenueChart"></canvas>
+                </div>
+
+                <!-- Revenue Table -->
+                <h5 class="mt-4">Monthly Revenue Data</h5>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Month</th>
+                                <th class="text-end">Revenue ($)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in reportData.MonthlyRevenue)
+                            {
+                                <tr>
+                                    <td>@item.Month</td>
+                                    <td class="text-end">@item.Revenue.ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr class="table-primary">
+                                <th>Total</th>
+                                <th class="text-end">@reportData.MonthlyRevenue.Sum(m => m.Revenue).ToString("N2")</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Export Options -->
+                <div class="d-flex justify-content-end mt-4">
+                    <div class="btn-group">
+                        <button class="btn btn-outline-secondary" @onclick="ExportPDF" disabled="@isExporting">
+                            @if (isExporting && exportType == "PDF")
+                            {
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                <span> Exporting...</span>
+                            }
+                            else
+                            {
+                                <span class="oi oi-document" aria-hidden="true"></span>
+                                <span> Export PDF</span>
+                            }
+                        </button>
+                        <button class="btn btn-outline-secondary" @onclick="ExportExcel" disabled="@isExporting">
+                            @if (isExporting && exportType == "Excel")
+                            {
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                <span> Exporting...</span>
+                            }
+                            else
+                            {
+                                <span class="oi oi-spreadsheet" aria-hidden="true"></span>
+                                <span> Export Excel</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Export Notification -->
+    @if (showExportNotification)
+    {
+        <div class="toast-container position-fixed bottom-0 end-0 p-3">
+            <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast-header">
+                    <strong class="me-auto">Export Complete</strong>
+                    <button type="button" class="btn-close" @onclick="() => showExportNotification = false"></button>
+                </div>
+                <div class="toast-body bg-success text-white">
+                    Your @exportType export has been completed successfully!
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private ReportData? reportData;
+    private bool isAuthenticated;
+    private bool isChartLoading = false;
+    private bool isExporting = false;
+    private bool showExportNotification = false;
+    private string exportType = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check authentication status
+        isAuthenticated = await AuthService.IsAuthenticatedAsync();
+
+        if (isAuthenticated)
+        {
+            // Fetch report data on initialization
+            await LoadReportAsync();
+
+            // Subscribe to AppState changes (e.g., when category changes)
+            AppState.OnChange += AppStateChanged;
+        }
+        else
+        {
+            // Redirect to login if not authenticated
+            NavigationManager.NavigateTo("login");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Initialize the chart after the component has rendered
+        if (reportData != null && (firstRender || !isChartLoading))
+        {
+            await RenderChartAsync();
+        }
+    }
+
+    /// <summary>
+    /// Loads report data from the DataService
+    /// This method is called on initialization and when the Refresh button is clicked
+    /// </summary>
+    private async Task LoadReportAsync()
+    {
+        // The DataService.GetReportDataAsync method has its own internal loading state
+        reportData = await DataService.GetReportDataAsync();
+
+        // Schedule chart rendering after data is loaded
+        if (reportData != null)
+        {
+            await RenderChartAsync();
+        }
+    }
+
+    /// <summary>
+    /// Renders the revenue chart using Chart.js via JavaScript interop
+    /// </summary>
+    private async Task RenderChartAsync()
+    {
+        if (reportData == null || reportData.MonthlyRevenue == null)
+            return;
+
+        isChartLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Simulate a slight delay for demonstration purposes
+            await Task.Delay(800);
+
+            // Extract data for the chart
+            var labels = reportData.MonthlyRevenue.Select(m => m.Month).ToList();
+            var data = reportData.MonthlyRevenue.Select(m => m.Revenue).ToList();
+
+            // Render the chart using JavaScript interop
+            await ChartJs.RenderChartAsync("revenueChart", labels, data, "Monthly Revenue");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error rendering chart: {ex.Message}");
+        }
+        finally
+        {
+            isChartLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Handles changes in the AppState (when the dropdown value changes)
+    /// Forces a refresh of the report data
+    /// </summary>
+    private void AppStateChanged()
+    {
+        // This will be invoked when the selected category changes
+        // State has already changed in the AppState service, so we just need to re-render
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Manually refreshes the report data when the Refresh button is clicked
+    /// </summary>
+    private async Task RefreshReportAsync()
+    {
+        await LoadReportAsync();
+    }
+
+    /// <summary>
+    /// Export to PDF with simulated delay
+    /// </summary>
+    private async Task ExportPDF()
+    {
+        isExporting = true;
+        exportType = "PDF";
+        StateHasChanged();
+
+        // Simulate export delay
+        await Task.Delay(2000);
+
+        // In a real application, this would generate and download a PDF file
+        isExporting = false;
+        showExportNotification = true;
+        StateHasChanged();
+
+        // Auto-hide notification after 3 seconds
+        await Task.Delay(3000);
+        showExportNotification = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Export to Excel with simulated delay
+    /// </summary>
+    private async Task ExportExcel()
+    {
+        isExporting = true;
+        exportType = "Excel";
+        StateHasChanged();
+
+        // Simulate export delay
+        await Task.Delay(1500);
+
+        // In a real application, this would generate and download an Excel file
+        isExporting = false;
+        showExportNotification = true;
+        StateHasChanged();
+
+        // Auto-hide notification after 3 seconds
+        await Task.Delay(3000);
+        showExportNotification = false;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        // Unsubscribe from AppState changes
+        AppState.OnChange -= AppStateChanged;
+    }
+}

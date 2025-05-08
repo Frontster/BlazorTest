@@ -1,0 +1,102 @@
+﻿@page "/login"
+@using BlazorTest.Models
+@using BlazorTest.Services
+@inject AuthService AuthService
+@inject AppStateService AppState
+@inject NavigationManager NavigationManager
+
+<PageTitle>Login - Blazor Learning App</PageTitle>
+
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="text-center">Login</h3>
+            </div>
+            <div class="card-body">
+                @if (showError)
+                {
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        Invalid username or password. Please try again.
+                        <button type="button" class="btn-close" @onclick="() => showError = false"></button>
+                    </div>
+                }
+
+                <EditForm Model="@loginModel" OnValidSubmit="HandleLogin">
+                    <DataAnnotationsValidator />
+
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <InputText id="username" @bind-Value="loginModel.Username" class="form-control" disabled="@AppState.IsLoading" />
+                        <ValidationMessage For="@(() => loginModel.Username)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <InputText id="password" type="password" @bind-Value="loginModel.Password" class="form-control" disabled="@AppState.IsLoading" />
+                        <ValidationMessage For="@(() => loginModel.Password)" />
+                    </div>
+
+                    <div class="mb-3 form-check">
+                        <InputCheckbox id="rememberMe" @bind-Value="loginModel.RememberMe" class="form-check-input" disabled="@AppState.IsLoading" />
+                        <label class="form-check-label" for="rememberMe">Remember me</label>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary" disabled="@AppState.IsLoading">
+                            @if (AppState.IsLoading)
+                            {
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                <span> Loading...</span>
+                            }
+                            else
+                            {
+                                <span>Login</span>
+                            }
+                        </button>
+                    </div>
+                </EditForm>
+
+                <div class="text-center mt-3">
+                    <small class="text-muted">
+                        Demo App: Enter any username and password to login
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    // Login model for form binding
+    private LoginModel loginModel = new LoginModel();
+    private bool showError = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if user is already authenticated
+        var isAuthenticated = await AuthService.IsAuthenticatedAsync();
+        if (isAuthenticated)
+        {
+            // If already logged in, redirect to home
+            NavigationManager.NavigateTo("");
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        // Call authentication service to attempt login
+        var result = await AuthService.LoginAsync(loginModel.Username, loginModel.Password);
+
+        if (result)
+        {
+            // If login successful, navigate to home page
+            NavigationManager.NavigateTo("");
+        }
+        else
+        {
+            // Show error message on failed login
+            showError = true;
+        }
+    }
+}

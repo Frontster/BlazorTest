@@ -1,0 +1,155 @@
+﻿@using BlazorTest.Services
+@using BlazorTest.Shared
+@inherits LayoutComponentBase
+@inject AuthService AuthService
+@inject DataService DataService
+@inject AppStateService AppState
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu IsAuthenticated="@IsAuthenticated" />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+            @* Navigation Bar with Category Dropdown and Authentication controls *@
+            <div class="d-flex align-items-center">
+                @if (IsAuthenticated)
+                {
+                    <div class="me-4">
+                        @* Category Dropdown - Changes will trigger a refresh of current page data *@
+                        <div class="form-group mb-0">
+                            <select class="form-select" @bind="SelectedCategory" @bind:event="onchange" disabled="@AppState.IsLoading">
+                                @foreach (var category in DataService.AvailableCategories)
+                                {
+                                    <option value="@category">@category</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="me-4">
+                        <span>Welcome, @UserName</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline-dark" @onclick="LogoutAsync" disabled="@AppState.IsLoading">
+                        @if (AppState.IsLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            <span> Loading...</span>
+                        }
+                        else
+                        {
+                            <span>Logout</span>
+                        }
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-sm btn-outline-primary" @onclick="NavigateToLogin" disabled="@AppState.IsLoading">Login</button>
+                }
+            </div>
+        </div>
+
+        <article class="content px-4">
+            @* Global Loading Indicator - Shows whenever AppState.IsLoading is true *@
+            <LoadingIndicator IsLoading="@AppState.IsLoading" Fullscreen="true" Message="Loading content..." />
+            
+            @* Main Content Area *@
+            <div class="@(AppState.IsLoading ? "content-loading" : "")">
+                @Body
+            </div>
+        </article>
+    </main>
+</div>
+
+@code {
+    private bool IsAuthenticated { get; set; }
+    private string UserName { get; set; } = string.Empty;
+
+    // Property for binding to the category dropdown
+    private string SelectedCategory
+    {
+        get => AppState.SelectedCategory;
+        set
+        {
+            if (AppState.SelectedCategory != value)
+            {
+                AppState.SelectedCategory = value;
+                // Force navigation to same page to trigger a refresh
+                RefreshCurrentPage();
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check authentication status and get user info
+        IsAuthenticated = await AuthService.IsAuthenticatedAsync();
+        if (IsAuthenticated)
+        {
+            UserName = await AuthService.GetUserNameAsync();
+        }
+
+        // Subscribe to AppState changes
+        AppState.OnChange += StateHasChanged;
+
+        // Redirect to login if not authenticated
+        if (!IsAuthenticated && !NavigationManager.Uri.Contains("login", StringComparison.OrdinalIgnoreCase))
+        {
+            NavigationManager.NavigateTo("login");
+        }
+    }
+
+    // Refresh the current page when the selected category changes
+    private void RefreshCurrentPage()
+    {
+        var uri = NavigationManager.Uri;
+        // This forces the components to reload by navigating to the same page
+        NavigationManager.NavigateTo(uri, forceLoad: true);
+    }
+
+    private async Task LogoutAsync()
+    {
+        await AuthService.LogoutAsync();
+        IsAuthenticated = false;
+        NavigationManager.NavigateTo("login");
+    }
+
+    private void NavigateToLogin()
+    {
+        NavigationManager.NavigateTo("login");
+    }
+
+    public void Dispose()
+    {
+        // Unsubscribe from AppState changes
+        AppState.OnChange -= StateHasChanged;
+    }
+}
+
+<style>
+    /* Loading overlay styling */
+    .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(255, 255, 255, 0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .spinner-container {
+        text-align: center;
+    }
+
+    /* Content styling when loading */
+    .content-loading {
+        opacity: 0.6;
+        pointer-events: none;
+    }
+</style>

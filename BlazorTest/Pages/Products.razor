@@ -1,0 +1,136 @@
+﻿@page "/products"
+@using BlazorTest.Models
+@using BlazorTest.Services
+@inject DataService DataService
+@inject AppStateService AppState
+@inject AuthService AuthService
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<PageTitle>Products - Blazor Learning App</PageTitle>
+
+@if (!isAuthenticated)
+{
+    <div class="alert alert-warning">
+        Please login to view products.
+    </div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Products - @AppState.SelectedCategory</h1>
+        <button class="btn btn-outline-primary" @onclick="RefreshProductsAsync" disabled="@AppState.IsLoading">
+            @if (AppState.IsLoading)
+            {
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            }
+            else
+            {
+                <span class="oi oi-reload" aria-hidden="true"></span>
+            }
+            Refresh
+        </button>
+    </div>
+
+    <!-- Product Cards -->
+    @if (products != null && products.Any())
+    {
+        <div class="row">
+            @foreach (var product in products)
+            {
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">@product.Name</h5>
+                            <h6 class="card-subtitle mb-2 text-muted">Price: $@product.Price.ToString("F2")</h6>
+                            <p class="card-text">@product.Description</p>
+                        </div>
+                        <div class="card-footer d-flex justify-content-between align-items-center">
+                            <span class="@(product.InStock > 0 ? "text-success" : "text-danger")">
+                                @if (product.InStock > 0)
+                                {
+                                    <span>In Stock: @product.InStock</span>
+                                }
+                                else
+                                {
+                                    <span>Out of Stock</span>
+                                }
+                            </span>
+                            <button class="btn btn-sm btn-primary" disabled="@(product.InStock <= 0)">
+                                Add to Cart
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else if (!AppState.IsLoading)
+    {
+        <!-- Show when no products are found and not loading -->
+        <div class="alert alert-info">
+            No products found for the selected category.
+        </div>
+    }
+}
+
+@code {
+    private List<Product>? products;
+    private bool isAuthenticated;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check authentication status
+        isAuthenticated = await AuthService.IsAuthenticatedAsync();
+
+        if (isAuthenticated)
+        {
+            // Fetch products data on initialization
+            await LoadProductsAsync();
+
+            // Subscribe to AppState changes (e.g., when category changes)
+            AppState.OnChange += AppStateChanged;
+        }
+        else
+        {
+            // Redirect to login if not authenticated
+            NavigationManager.NavigateTo("login");
+        }
+    }
+
+    /// <summary>
+    /// Loads product data from the DataService
+    /// This method is called on initialization and when the Refresh button is clicked
+    /// </summary>
+    private async Task LoadProductsAsync()
+    {
+        // The DataService.GetProductsAsync method has its own internal loading state
+        // so we don't need to set AppState.IsLoading here
+        products = await DataService.GetProductsAsync();
+    }
+
+    /// <summary>
+    /// Handles changes in the AppState (when the dropdown value changes)
+    /// Forces a refresh of the products data
+    /// </summary>
+    private void AppStateChanged()
+    {
+        // This will be invoked when the selected category changes
+        // State has already changed in the AppState service, so we just need to re-render
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Manually refreshes the products data when the Refresh button is clicked
+    /// </summary>
+    private async Task RefreshProductsAsync()
+    {
+        await LoadProductsAsync();
+    }
+
+    public void Dispose()
+    {
+        // Unsubscribe from AppState changes
+        AppState.OnChange -= AppStateChanged;
+    }
+}
