@@ -1,23 +1,16 @@
 @page "/reports"
 @using BlazorTest.Models
 @using BlazorTest.Services
+@using BlazorTest.Shared
 @inject DataService DataService
 @inject AppStateService AppState
-@inject AuthService AuthService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @implements IDisposable
 
 <PageTitle>Reports - Blazor Learning App</PageTitle>
 
-@if (!isAuthenticated)
-{
-    <div class="alert alert-warning">
-        Please login to view reports.
-    </div>
-}
-else
-{
+<RouteGuard>
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Reports - @AppState.SelectedCategory</h1>
         <button class="btn btn-outline-primary" @onclick="RefreshReportAsync" disabled="@isRefreshing">
@@ -134,11 +127,10 @@ else
             </div>
         </div>
     }
-}
+</RouteGuard>
 
 @code {
     private ReportData? reportData;
-    private bool isAuthenticated;
     private bool isChartLoading = false;
     private bool isExporting = false;
     private bool isRefreshing = false;
@@ -150,24 +142,11 @@ else
     {
         Console.WriteLine("Reports.OnInitializedAsync: Initializing");
         
-        // Check authentication status
-        isAuthenticated = await AuthService.IsAuthenticatedAsync();
-        Console.WriteLine($"Reports.OnInitializedAsync: IsAuthenticated: {isAuthenticated}");
+        // Fetch report data on initialization
+        await LoadReportAsync();
 
-        if (isAuthenticated)
-        {
-            // Fetch report data on initialization
-            await LoadReportAsync();
-
-            // Subscribe to AppState changes (e.g., when category changes)
-            AppState.OnChange += AppStateChanged;
-        }
-        else
-        {
-            // Redirect to login if not authenticated
-            Console.WriteLine("Reports.OnInitializedAsync: Not authenticated, redirecting to login");
-            NavigationManager.NavigateTo("login");
-        }
+        // Subscribe to AppState changes (e.g., when category changes)
+        AppState.OnChange += AppStateChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

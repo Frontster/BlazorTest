@@ -1,70 +1,106 @@
-﻿@using Microsoft.AspNetCore.Components.Rendering
+@using Microsoft.AspNetCore.Components.Rendering
 @using BlazorTest.Services
 
 @inject NavigationManager NavigationManager
-@inject AuthService AuthService
+@inject IJSRuntime JSRuntime
+@implements IDisposable
 
-@if (isAuthenticated)
-{
-    @ChildContent
-}
-else if (isCheckingAuth)
-{
-    <div class="d-flex justify-content-center my-5">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Checking authentication...</span>
+<div class="route-guard-container">
+    @if (AuthState?.IsLoading == true)
+    {
+        <div class="loading-container">
+            <LoadingIndicator IsLoading="true" Message="Loading content..." Fullscreen="true" />
         </div>
-        <span class="ms-2">Verifying access...</span>
-    </div>
-}
-else
-{
-    <div class="alert alert-warning">
-        <h4 class="alert-heading">Authentication Required</h4>
-        <p>You need to log in to access this page.</p>
-        <hr>
-        <button class="btn btn-primary" @onclick="NavigateToLogin">Log In</button>
-    </div>
-}
+    }
+    else if (AuthState?.IsAuthenticated != true)
+    {
+        <div class="auth-required-container">
+            <div class="alert alert-warning">
+                <h4 class="alert-heading">Authentication Required</h4>
+                <p>You need to log in to access this page.</p>
+                <hr>
+                <button class="btn btn-primary" @onclick="NavigateToLogin">Log In</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        @ChildContent
+    }
+</div>
 
 @code {
+    [CascadingParameter]
+    private AuthStateProvider AuthState { get; set; } = null!;
+
     [Parameter]
-    public RenderFragment ChildContent { get; set; }
+    public RenderFragment ChildContent { get; set; } = null!;
 
     [Parameter]
     public string[] Roles { get; set; } = Array.Empty<string>();
 
-    private bool isAuthenticated = false;
-    private bool isCheckingAuth = true;
-
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        await CheckAuthenticationAsync();
+        Console.WriteLine("RouteGuard.OnInitialized: Initializing");
+        
+        // Subscribe to auth state changes
+        if (AuthState != null)
+        {
+            AuthState.OnAuthStateChanged += HandleAuthStateChanged;
+        }
     }
 
-    private async Task CheckAuthenticationAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        Console.WriteLine($"RouteGuard: Checking authentication at {DateTime.Now:HH:mm:ss.fff}");
-        isCheckingAuth = true;
-        isAuthenticated = await AuthService.IsAuthenticatedAsync();
-
-        if (!isAuthenticated)
+        if (firstRender)
         {
-            Console.WriteLine($"RouteGuard: Authentication check failed at {DateTime.Now:HH:mm:ss.fff}");
+            // Log component initialization for debugging
+            await JSRuntime.InvokeVoidAsync("console.log", "RouteGuard component initialized");
         }
-        else if (Roles.Length > 0)
-        {
-            // Here you would implement role-based checks
-            // For now, assume all authenticated users have access
-            Console.WriteLine($"RouteGuard: User authenticated, role check would happen here at {DateTime.Now:HH:mm:ss.fff}");
-        }
+    }
 
-        isCheckingAuth = false;
+    private void HandleAuthStateChanged()
+    {
+        Console.WriteLine("RouteGuard.HandleAuthStateChanged: Auth state changed");
+        // Force UI update when auth state changes
+        InvokeAsync(StateHasChanged);
     }
 
     private void NavigateToLogin()
     {
         var returnUrl = Uri.EscapeDataString(NavigationManager.Uri);
-        NavigationManager.NavigateTo($"login?returnUrl={returnUrl}");
+        NavigationManager.NavigateTo($"login?returnUrl={returnUrl}", forceLoad: false);
+    }
+
+    public void Dispose()
+    {
+        Console.WriteLine("RouteGuard.Dispose: Disposing");
+        // Unsubscribe from auth state changes
+        if (AuthState != null)
+        {
+            AuthState.OnAuthStateChanged -= HandleAuthStateChanged;
+        }
     }
 }
+
+<style>
+    .route-guard-container {
+        width: 100%;
+        min-height: 400px;
+        position: relative;
+    }
+    
+    .loading-container,
+    .auth-required-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 400px;
+        width: 100%;
+    }
+    
+    .auth-required-container .alert {
+        max-width: 500px;
+        margin: 2rem auto;
+    }
+</style>

@@ -8,18 +8,17 @@
 @implements IDisposable
 
 <div class="page">
-    <CascadingValue Value="IsAuthenticated">
+    <AuthStateProvider @ref="authStateProvider">
         <header>
-            <FluentStack Orientation="Orientation.Vertical" Width="100%">
-                <nav class="navbar navbar-expand-lg navbar-light bg-light">
-                    <div class="container-fluid">
-                        <FluentButton Appearance="Appearance.Lightweight" href="" class="navbar-brand">Blazor Learning App</FluentButton>
-                        <button class="navbar-toggler" type="button" @onclick="ToggleNavMenu">
-                            <span class="navbar-toggler-icon"></span>
-                        </button>
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <div class="container-fluid">
+                    <a href="" class="navbar-brand">Blazor Learning App</a>
+                    <button class="navbar-toggler" type="button" @onclick="ToggleNavMenu">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
 
                 <div class="@NavMenuCssClass navbar-collapse">
-                    @if (IsAuthenticated)
+                    @if (authStateProvider?.IsAuthenticated ?? false)
                     {
                         <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                             <li class="nav-item">
@@ -64,8 +63,8 @@
                             <div class="me-3">
                                 <span>Welcome, @UserName</span>
                             </div>
-                            <button class="btn btn-sm btn-outline-dark" @onclick="LogoutAsync" disabled="@isLoggingOut">
-                                @if (isLoggingOut)
+                            <button class="btn btn-outline-danger" @onclick="LogoutAsync" disabled="@isPageLoading">
+                                @if (isPageLoading)
                                 {
                                     <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                                     <span> Logging out...</span>
@@ -90,56 +89,86 @@
                 </div>
             </div>
         </nav>
-        <FluentNavigation />
-            </FluentStack>
         </header>
 
         <div class="d-flex">
-            <aside class="fluent-sidebar">
-                <FluentRouteNav />
-            </aside>
 
             <main class="container-fluid py-4 flex-grow-1">
-                <FluentCard Width="100%" Height="100%" class="position-relative">
-                    @if (isPageLoading)
+                <div class="content-container position-relative">
+                    <!-- Fixed-size loading overlay that doesn't resize the content -->
+                    @if (AppState.IsLoading || isPageLoading)
                     {
                         <div class="loading-overlay">
-                            <FluentProgressRing />
+                            <LoadingIndicator IsLoading="true" Message="Loading..." />
                         </div>
                     }
-                    <div class="@(isPageLoading ? "content-loading" : "")">
-                        @if (showPageContent || NavigationManager.Uri.Contains("login", StringComparison.OrdinalIgnoreCase))
+                    
+                    <!-- Main content area with fixed minimum dimensions -->
+                    <div class="content-area @((isPageLoading || AppState.IsLoading) ? "content-loading" : "")">
+                        @if ((authStateProvider?.IsAuthenticated ?? false) || NavigationManager.Uri.Contains("login", StringComparison.OrdinalIgnoreCase))
                         {
                             @Body
                         }
+                        else
+                        {
+                            <!-- Show authentication required message -->
+                            <div class="auth-required-message">
+                                <h4>Authentication Required</h4>
+                                <p>Please log in to access this application.</p>
+                            </div>
+                        }
                     </div>
-                </FluentCard>
+                </div>
             </main>
         </div>
-    </CascadingValue>
+    </AuthStateProvider>
 </div>
 
 @code {
-    private bool IsAuthenticated { get; set; }
-    private string UserName { get; set; } = string.Empty;
+    private AuthStateProvider authStateProvider = null!;
     private bool collapseNavMenu = true;
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
-    private bool isLoggingOut = false;
-    private bool isPageLoading = true; // Start with page loading
-    private bool showPageContent = false; // Don't show content until authenticated and loaded
+    private bool isPageLoading = true;
+    private bool showPageContent = false;
 
-    // Property for binding to the category dropdown
+    // Convenience properties that delegate to AuthStateProvider
+    private bool IsAuthenticated => authStateProvider?.IsAuthenticated ?? false;
+    private string UserName => authStateProvider?.UserName ?? string.Empty;
+
+    private string _selectedCategory = string.Empty;
     private string SelectedCategory
     {
-        get => AppState.SelectedCategory;
+        get => _selectedCategory;
         set
         {
-            if (AppState.SelectedCategory != value)
+            if (_selectedCategory != value)
             {
-                AppState.SelectedCategory = value;
-                Console.WriteLine($"Category changed to: {value}");
-                // Force navigation to same page to trigger a refresh
-                RefreshCurrentPage();
+                _selectedCategory = value;
+                Console.WriteLine($"MainLayout: Category changed to {value}");
+                
+                // Set loading state
+                isPageLoading = true;
+                AppState.IsLoading = true;
+                StateHasChanged();
+                
+                // Update app state with a small delay to make loading visible
+                InvokeAsync(async () => 
+                {
+                    // Add a small delay to make loading state visible
+                    await Task.Delay(800);
+                    
+                    // Update app state
+                    AppState.SelectedCategory = value;
+                    
+                    // Force navigation to same page to trigger a refresh
+                    RefreshCurrentPage();
+                    
+                    // Reset loading state after a short delay
+                    await Task.Delay(200);
+                    isPageLoading = false;
+                    AppState.IsLoading = false;
+                    StateHasChanged();
+                });
             }
         }
     }
@@ -151,17 +180,40 @@
         // Subscribe to app state changes
         AppState.OnChange += AppStateChanged;
         
-        // Reset any lingering loading states
-        AppState.IsLoading = false;
-        isPageLoading = false;
-        
-        // Initial authentication check
-        await UpdateAuthenticationState();
-        
         // Subscribe to navigation location changes
         NavigationManager.LocationChanged += HandleLocationChanged;
+        
+        // Reset any lingering loading states
+        AppState.IsLoading = false;
+        isPageLoading = true;
+        
+        // Wait for auth state provider to initialize
+        await Task.Delay(100); // Short delay to ensure component is rendered
+        
+        // Set initial category from AppState
+        _selectedCategory = AppState.SelectedCategory;
+        
+        // Show content after initialization
+        showPageContent = true;
+        isPageLoading = false;
+        StateHasChanged();
     }
-    
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Console.WriteLine("MainLayout.OnAfterRenderAsync: First render");
+            
+            // Initialize default category if authenticated
+            if (authStateProvider.IsAuthenticated && string.IsNullOrEmpty(AppState.SelectedCategory))
+            {
+                AppState.InitializeDefaults();
+                _selectedCategory = AppState.SelectedCategory;
+            }
+        }
+    }
+
     private async void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         Console.WriteLine($"MainLayout.HandleLocationChanged: Navigation to {e.Location}");
@@ -226,18 +278,17 @@
     {
         try
         {
-            IsAuthenticated = await AuthService.IsAuthenticatedAsync();
-            Console.WriteLine($"Authentication status updated: {IsAuthenticated}");
+            // Use the AuthStateProvider's method to update auth state
+            await authStateProvider.UpdateAuthenticationStateAsync();
+            Console.WriteLine($"Authentication status updated: {authStateProvider.IsAuthenticated}");
 
-            if (IsAuthenticated)
+            if (authStateProvider.IsAuthenticated)
             {
-                UserName = await AuthService.GetUserNameAsync();
-                Console.WriteLine($"User logged in: {UserName}");
+                Console.WriteLine($"User logged in: {authStateProvider.UserName}");
                 showPageContent = true;
             }
             else
             {
-                UserName = string.Empty;
                 showPageContent = false;
             }
         }
@@ -332,18 +383,17 @@
 
     private async Task LogoutAsync()
     {
-        if (isLoggingOut)
+        if (authStateProvider == null)
             return;
             
         try
         {
-            isLoggingOut = true;
+            // Show loading state
+            isPageLoading = true;
             StateHasChanged();
             
             Console.WriteLine("Logging out");
-            await AuthService.LogoutAsync();
-            IsAuthenticated = false;
-            NavigationManager.NavigateTo("login");
+            await authStateProvider.LogoutAsync();
         }
         catch (Exception ex)
         {
@@ -351,7 +401,7 @@
         }
         finally
         {
-            isLoggingOut = false;
+            isPageLoading = false;
             StateHasChanged();
         }
     }
@@ -374,6 +424,8 @@
 
     main {
         flex: 1;
+        width: 100%;
+        padding: 1rem;
     }
 
     header {
@@ -383,24 +435,37 @@
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 
-    /* Sidebar styling */
-    .fluent-sidebar {
-        width: 250px;
-        background-color: var(--neutral-layer-2);
-        box-shadow: 1px 0 3px rgba(0,0,0,0.1);
-        padding: 1rem 0;
-        height: calc(100vh - 120px); /* Adjust based on header height */
-        position: sticky;
-        top: 120px; /* Adjust based on header height */
+    /* Content container with fixed dimensions */
+    .content-container {
+        position: relative;
+        min-height: 500px; /* Ensures consistent height during loading */
+        width: 100%;
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        padding: 1.5rem;
+    }
+
+    /* Content area with fixed dimensions */
+    .content-area {
+        min-height: 400px; /* Ensures content area doesn't collapse */
+        width: 100%;
     }
 
     /* Loading overlay styling */
     .loading-overlay {
         position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background-color: rgba(255, 255, 255, 0.9);
         z-index: 1000;
+        border-radius: 8px;
     }
 
     /* Content styling when loading */
@@ -409,14 +474,19 @@
         pointer-events: none;
     }
 
-    /* FluentUI customizations */
-    ::deep .fluent-card {
-        padding: 1.5rem;
-        border-radius: 8px;
+    /* Authentication required message */
+    .auth-required-message {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        min-height: 300px;
+        text-align: center;
+        padding: 2rem;
     }
 
-    ::deep .navbar-brand.fluent-button {
-        font-size: 1.25rem;
-        font-weight: 500;
+    .auth-required-message h4 {
+        margin-bottom: 1rem;
+        color: #dc3545;
     }
 </style>

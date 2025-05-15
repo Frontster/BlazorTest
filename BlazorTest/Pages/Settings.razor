@@ -1,22 +1,15 @@
 @page "/settings"
 @using BlazorTest.Models
 @using BlazorTest.Services
+@using BlazorTest.Shared
 @inject DataService DataService
 @inject AppStateService AppState
-@inject AuthService AuthService
 @inject NavigationManager NavigationManager
 @implements IDisposable
 
 <PageTitle>Settings - Blazor Learning App</PageTitle>
 
-@if (!isAuthenticated)
-{
-    <div class="alert alert-warning">
-        Please login to view settings.
-    </div>
-}
-else
-{
+<RouteGuard>
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Settings - @AppState.SelectedCategory</h1>
         <button class="btn btn-outline-primary" @onclick="RefreshSettingsAsync" disabled="@isRefreshing">
@@ -155,11 +148,10 @@ else
             </div>
         }
     }
-}
+</RouteGuard>
 
 @code {
     private SettingsData? settings;
-    private bool isAuthenticated;
     private bool isSavingCategorySettings;
     private bool isSavingUserPreferences;
     private bool isRefreshing;
@@ -167,22 +159,11 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // Check authentication status
-        isAuthenticated = await AuthService.IsAuthenticatedAsync();
+        // Fetch settings data on initialization
+        await LoadSettingsAsync();
 
-        if (isAuthenticated)
-        {
-            // Fetch settings data on initialization
-            await LoadSettingsAsync();
-
-            // Subscribe to AppState changes (e.g., when category changes)
-            AppState.OnChange += AppStateChanged;
-        }
-        else
-        {
-            // Redirect to login if not authenticated
-            NavigationManager.NavigateTo("login");
-        }
+        // Subscribe to AppState changes (e.g., when category changes)
+        AppState.OnChange += AppStateChanged;
     }
 
     /// <summary>

@@ -1,0 +1,355 @@
+@using BlazorTest.Services
+@inject AuthService AuthService
+@inject AppStateService AppState
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<CascadingValue Value="this" IsFixed="true">
+    @if (IsInitialized)
+    {
+        @ChildContent
+    }
+    else
+    {
+        <div class="auth-loading-container">
+            <LoadingIndicator IsLoading="true" Message="Initializing application..." Fullscreen="true" />
+        </div>
+    }
+</CascadingValue>
+
+@code {
+    [Parameter]
+    public RenderFragment ChildContent { get; set; } = null!;
+
+    private bool _isAuthenticated;
+    private bool _isInitialized;
+    private bool _isLoading;
+    private string _userName = string.Empty;
+    private bool _preventMultipleRedirects = false;
+    private DateTime _lastAuthCheck = DateTime.MinValue;
+    private readonly TimeSpan _authCheckCooldown = TimeSpan.FromSeconds(2);
+    
+    /// <summary>
+    /// Whether the user is authenticated
+    /// </summary>
+    public bool IsAuthenticated
+    {
+        get => _isAuthenticated;
+        private set
+        {
+            if (_isAuthenticated != value)
+            {
+                _isAuthenticated = value;
+                AppState.IsAuthenticated = value;
+                OnAuthStateChanged?.Invoke();
+                StateHasChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether the authentication state has been initialized
+    /// </summary>
+    public bool IsInitialized
+    {
+        get => _isInitialized;
+        private set
+        {
+            if (_isInitialized != value)
+            {
+                _isInitialized = value;
+                StateHasChanged();
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Whether the provider is currently loading or checking authentication
+    /// </summary>
+    public bool IsLoading
+    {
+        get => _isLoading;
+        private set
+        {
+            if (_isLoading != value)
+            {
+                _isLoading = value;
+                AppState.IsLoading = value;
+                StateHasChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The current user's name
+    /// </summary>
+    public string UserName
+    {
+        get => _userName;
+        private set
+        {
+            if (_userName != value)
+            {
+                _userName = value;
+                StateHasChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Event that is triggered when the authentication state changes
+    /// </summary>
+    public event Action? OnAuthStateChanged;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Console.WriteLine("AuthStateProvider.OnInitializedAsync: Initializing");
+        
+        try
+        {
+            // Set initial loading state
+            IsLoading = true;
+            
+            // Subscribe to navigation events to handle page changes
+            NavigationManager.LocationChanged += HandleLocationChanged;
+            
+            // Subscribe to AppState changes
+            AppState.OnChange += HandleAppStateChanged;
+            
+            // Check if we're on the login page
+            bool isLoginPage = NavigationManager.Uri.Contains("login", StringComparison.OrdinalIgnoreCase);
+            
+            if (!isLoginPage)
+            {
+                // Check authentication status on initialization
+                await UpdateAuthenticationStateAsync();
+                
+                // If not authenticated, redirect to login
+                if (!IsAuthenticated && !_preventMultipleRedirects)
+                {
+                    _preventMultipleRedirects = true;
+                    Console.WriteLine("AuthStateProvider: Not authenticated, redirecting to login");
+                    NavigationManager.NavigateTo("login", forceLoad: false);
+                    return;
+                }
+            }
+            else
+            {
+                // On login page, just mark as initialized without checking auth
+                IsInitialized = true;
+            }
+            
+            // Log initialization complete
+            Console.WriteLine("AuthStateProvider: Initialization complete");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"AuthStateProvider: Error during initialization: {ex.Message}");
+            // Even on error, mark as initialized to prevent infinite loading
+            IsInitialized = true;
+        }
+        finally
+        {
+            // End loading state
+            IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Updates the authentication state by checking with the AuthService
+    /// </summary>
+    public async Task UpdateAuthenticationStateAsync()
+    {
+        // Prevent rapid successive auth checks
+        if (DateTime.Now - _lastAuthCheck < _authCheckCooldown)
+        {
+            Console.WriteLine("AuthStateProvider: Auth check cooldown active, skipping");
+            return;
+        }
+        
+        _lastAuthCheck = DateTime.Now;
+        
+        try
+        {
+            // Set loading state
+            IsLoading = true;
+            
+            // Check authentication status
+            bool isAuthenticated = await AuthService.IsAuthenticatedAsync();
+            
+            if (isAuthenticated)
+            {
+                // Get user name if authenticated
+                string userName = await AuthService.GetUserNameAsync();
+                UserName = userName;
+                Console.WriteLine($"AuthStateProvider: User authenticated: {UserName}");
+            }
+            else
+            {
+                UserName = string.Empty;
+                Console.WriteLine("AuthStateProvider: User not authenticated");
+            }
+            
+            // Update authentication state
+            IsAuthenticated = isAuthenticated;
+            
+            // Mark as initialized
+            IsInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"AuthStateProvider: Error updating auth state: {ex.Message}");
+            // Set initialized even on error to prevent infinite loading
+            IsInitialized = true;
+        }
+        finally
+        {
+            // End loading state after a short delay for UI feedback
+            await Task.Delay(200);
+            IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Logs the user out
+    /// </summary>
+    public async Task LogoutAsync()
+    {
+        Console.WriteLine("AuthStateProvider: Logging out");
+        
+        try
+        {
+            // Set loading state
+            IsLoading = true;
+            
+            // Log out using the auth service
+            await AuthService.LogoutAsync();
+            
+            // Update state
+            IsAuthenticated = false;
+            UserName = string.Empty;
+            
+            // Reset app state
+            AppState.Reset();
+            
+            // Navigate to login page
+            _preventMultipleRedirects = true; // Prevent redirect loops
+            NavigationManager.NavigateTo("login", forceLoad: false);
+            
+            // Log completion
+            Console.WriteLine("AuthStateProvider: Logout complete");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"AuthStateProvider: Error during logout: {ex.Message}");
+        }
+        finally
+        {
+            // End loading state
+            IsLoading = false;
+        }
+    }
+
+    private async void HandleAppStateChanged()
+    {
+        // Only update auth state if AppState.IsAuthenticated changed and not in cooldown
+        if (AppState.IsAuthenticated != IsAuthenticated && 
+            DateTime.Now - _lastAuthCheck >= _authCheckCooldown)
+        {
+            Console.WriteLine("AuthStateProvider: AppState auth changed, updating");
+            await UpdateAuthenticationStateAsync();
+        }
+    }
+    
+    private async void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        // Avoid processing during page reloads or when already loading
+        if (IsLoading)
+        {
+            Console.WriteLine("AuthStateProvider: Already loading, skipping location change handler");
+            return;
+        }
+        
+        Console.WriteLine($"AuthStateProvider: Location changed to {e.Location}");
+        
+        // Set loading state for page navigation
+        IsLoading = true;
+        
+        try
+        {
+            // Check if we're on the login page
+            bool isLoginPage = e.Location.Contains("login", StringComparison.OrdinalIgnoreCase);
+            
+            if (!isLoginPage)
+            {
+                // Reset redirect prevention on non-login pages
+                _preventMultipleRedirects = false;
+                
+                // Only check auth if we haven't checked recently
+                if (DateTime.Now - _lastAuthCheck >= _authCheckCooldown)
+                {
+                    // Verify authentication status on page change
+                    bool isAuthenticated = await AuthService.IsAuthenticatedAsync();
+                    
+                    // Update state if changed
+                    if (isAuthenticated != IsAuthenticated)
+                    {
+                        await UpdateAuthenticationStateAsync();
+                    }
+                    
+                    // Redirect to login if not authenticated
+                    if (!isAuthenticated && !_preventMultipleRedirects)
+                    {
+                        _preventMultipleRedirects = true;
+                        Console.WriteLine("AuthStateProvider: Not authenticated during navigation, redirecting to login");
+                        NavigationManager.NavigateTo("login", forceLoad: false);
+                        return;
+                    }
+                }
+            }
+            else
+            {
+                // On login page, reset authentication if currently authenticated
+                if (IsAuthenticated)
+                {
+                    Console.WriteLine("AuthStateProvider: On login page while authenticated, resetting state");
+                    IsAuthenticated = false;
+                    UserName = string.Empty;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"AuthStateProvider: Error during location change: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("console.error", ex);
+        }
+        finally
+        {
+            // End loading state after a short delay for UI feedback
+            await Task.Delay(200);
+            IsLoading = false;
+        }
+    }
+    
+    public void Dispose()
+    {
+        Console.WriteLine("AuthStateProvider.Dispose: Unsubscribing from events");
+        
+        // Unsubscribe from AppState changes
+        AppState.OnChange -= HandleAppStateChanged;
+        
+        // Unsubscribe from navigation events
+        NavigationManager.LocationChanged -= HandleLocationChanged;
+    }
+}
+
+<style>
+    .auth-loading-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        width: 100%;
+    }
+</style>
