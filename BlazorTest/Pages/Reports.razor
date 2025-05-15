@@ -1,4 +1,4 @@
-﻿@page "/reports"
+@page "/reports"
 @using BlazorTest.Models
 @using BlazorTest.Services
 @inject DataService DataService
@@ -174,9 +174,10 @@ else
     {
         Console.WriteLine($"Reports.OnAfterRenderAsync: FirstRender: {firstRender}");
         
-        // Initialize the chart after the component has rendered
-        if (reportData != null && (firstRender || !isChartLoading))
+        // Initialize the chart only on first render or when data changes
+        if (reportData != null && firstRender)
         {
+            Console.WriteLine("Reports.OnAfterRenderAsync: First render, initializing chart");
             await RenderChartAsync();
         }
     }
@@ -191,16 +192,25 @@ else
         
         try
         {
-            CancellationToken cancellationToken = 
-                refreshCancellationTokenSource?.Token ?? CancellationToken.None;
-                
+            // Create a new cancellation token if one doesn't exist
+            if (refreshCancellationTokenSource == null || refreshCancellationTokenSource.IsCancellationRequested)
+            {
+                refreshCancellationTokenSource = new CancellationTokenSource();
+                refreshCancellationTokenSource.CancelAfter(10000); // 10 second timeout
+            }
+            
+            // Reset chart rendered flag when loading new data
+            chartRendered = false;
+            
             // The DataService.GetReportDataAsync method has its own internal loading state
-            reportData = await DataService.GetReportDataAsync(cancellationToken);
+            reportData = await DataService.GetReportDataAsync(refreshCancellationTokenSource.Token);
             Console.WriteLine("Reports.LoadReportAsync: Report data loaded successfully");
             
-            // Schedule chart rendering after data is loaded
-            if (reportData != null)
+            // Only render chart if we're not in a loading state
+            if (reportData != null && !isChartLoading && !AppState.IsLoading)
             {
+                // Small delay to ensure DOM is ready
+                await Task.Delay(100);
                 await RenderChartAsync();
             }
         }
@@ -214,6 +224,10 @@ else
         }
     }
 
+    // Track if chart has been rendered to prevent multiple renders
+    private bool chartRendered = false;
+    private string currentCategory = string.Empty;
+    
     /// <summary>
     /// Renders the revenue chart using Chart.js via JavaScript interop
     /// </summary>
@@ -224,15 +238,29 @@ else
             Console.WriteLine("Reports.RenderChartAsync: No report data available to render chart");
             return;
         }
+        
+        // Skip rendering if we're already loading or if the category hasn't changed
+        if (isChartLoading)
+        {
+            Console.WriteLine("Reports.RenderChartAsync: Chart is already loading, skipping");
+            return;
+        }
+        
+        // Only render if the category changed or chart hasn't been rendered yet
+        if (chartRendered && currentCategory == AppState.SelectedCategory)
+        {
+            Console.WriteLine("Reports.RenderChartAsync: Chart already rendered for this category, skipping");
+            return;
+        }
 
         isChartLoading = true;
         StateHasChanged();
 
         try
         {
-            // Simulate a slight delay for demonstration purposes
-            await Task.Delay(800);
-
+            // Update current category
+            currentCategory = AppState.SelectedCategory;
+            
             // Extract data for the chart
             var labels = reportData.MonthlyRevenue.Select(m => m.Month).ToList();
             var data = reportData.MonthlyRevenue.Select(m => (double)m.Revenue).ToList();
@@ -241,6 +269,9 @@ else
             Console.WriteLine("Reports.RenderChartAsync: Calling JS to render chart");
             await JSRuntime.InvokeVoidAsync("renderChart", "revenueChart", labels, data, "Monthly Revenue");
             Console.WriteLine("Reports.RenderChartAsync: Chart rendered successfully");
+            
+            // Mark chart as rendered
+            chartRendered = true;
         }
         catch (Exception ex)
         {
@@ -261,20 +292,35 @@ else
     {
         Console.WriteLine("Reports.AppStateChanged: AppState changed");
         
+        // Only proceed if we're not already refreshing or loading
+        if (isRefreshing || isChartLoading || AppState.IsLoading)
+        {
+            Console.WriteLine($"Reports.AppStateChanged: Skipping refresh - isRefreshing: {isRefreshing}, isChartLoading: {isChartLoading}, AppState.IsLoading: {AppState.IsLoading}");
+            return;
+        }
+        
         // Use InvokeAsync to avoid threading issues
         InvokeAsync(async () => {
             try
             {
-                // Only reload if we're not already refreshing
-                if (!isRefreshing)
-                {
-                    await LoadReportAsync();
-                    StateHasChanged();
-                }
+                // Set flags to prevent multiple refreshes
+                isRefreshing = true;
+                
+                // Cancel any existing refresh operation
+                refreshCancellationTokenSource?.Cancel();
+                refreshCancellationTokenSource = new CancellationTokenSource();
+                refreshCancellationTokenSource.CancelAfter(10000); // 10 second timeout
+                
+                await LoadReportAsync();
+                StateHasChanged();
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Reports.AppStateChanged: Error refreshing data: {ex.Message}");
+            }
+            finally
+            {
+                isRefreshing = false;
             }
         });
     }

@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @using BlazorTest.Models
 @using BlazorTest.Services
 @inject DataService DataService
@@ -145,10 +145,21 @@ else
 
         try
         {
+            // Create a cancellation token if one doesn't exist
+            if (refreshCancellationTokenSource == null || refreshCancellationTokenSource.IsCancellationRequested)
+            {
+                refreshCancellationTokenSource = new CancellationTokenSource();
+                refreshCancellationTokenSource.CancelAfter(10000); // 10 second timeout
+            }
+            
             // The DataService.GetDashboardDataAsync method has its own internal loading state
-            dashboardData = await DataService.GetDashboardDataAsync();
+            dashboardData = await DataService.GetDashboardDataAsync(refreshCancellationTokenSource.Token);
 
             Console.WriteLine($"Index.LoadDashboardDataAsync: Data loaded with title: {dashboardData?.Title}");
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Index.LoadDashboardDataAsync: Operation was cancelled");
         }
         catch (Exception ex)
         {
@@ -165,13 +176,22 @@ else
         Console.WriteLine("Index.AppStateChanged: AppState changed, refreshing data");
 
         // Check if we're still on this component and not already refreshing
-        if (isAuthenticated && !isRefreshing)
+        // Also check if IsLoading is true to prevent multiple refreshes
+        if (isAuthenticated && !isRefreshing && !AppState.IsLoading)
         {
             // Use InvokeAsync to avoid threading issues
             InvokeAsync(async () =>
             {
                 try
                 {
+                    // Set local refreshing flag to prevent multiple refreshes
+                    isRefreshing = true;
+                    
+                    // Create a cancellation token with timeout
+                    refreshCancellationTokenSource?.Cancel();
+                    refreshCancellationTokenSource = new CancellationTokenSource();
+                    refreshCancellationTokenSource.CancelAfter(5000); // 5 second timeout
+                    
                     await LoadDashboardDataAsync();
                     StateHasChanged();
                 }
@@ -179,7 +199,16 @@ else
                 {
                     Console.Error.WriteLine($"Error in AppStateChanged: {ex.Message}");
                 }
+                finally
+                {
+                    // Reset refreshing flag
+                    isRefreshing = false;
+                }
             });
+        }
+        else
+        {
+            Console.WriteLine($"Index.AppStateChanged: Skipping refresh - isAuthenticated: {isAuthenticated}, isRefreshing: {isRefreshing}, isLoading: {AppState.IsLoading}");
         }
     }
 

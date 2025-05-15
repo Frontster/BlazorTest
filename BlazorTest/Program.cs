@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using BlazorTest;
 using BlazorTest.Services;
 using Blazored.LocalStorage;
+using Microsoft.FluentUI.AspNetCore.Components;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -20,6 +21,9 @@ builder.Services.AddScoped<AppStateService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<DataService>();
 builder.Services.AddScoped<ChartJsInterop>();
+
+// Register FluentUI services
+builder.Services.AddFluentUIComponents();
 
 Console.WriteLine("Application services registered");
 

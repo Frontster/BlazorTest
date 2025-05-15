@@ -79,8 +79,6 @@
         <a class="dismiss">🗙</a>
     </div>
     <script src="_framework/blazor.webassembly.js"></script>
-
-    <!-- Custom JS for Chart rendering in Reports page -->
     <script>
         // Store chart instances globally to manage them properly
         window.chartInstances = {};
@@ -174,10 +172,8 @@
             }, 500);
         };
 
-        // Log Blazor startup for debugging
-        Blazor.start().then(() => {
-            console.log("Blazor started successfully");
-        });
+        // Log Blazor startup - don't call start() again
+        console.log("Blazor scripts loaded - automatic initialization will occur");
     </script>
 </body>
 

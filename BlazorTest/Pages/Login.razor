@@ -1,4 +1,4 @@
-﻿@page "/login"
+@page "/login"
 @using BlazorTest.Models
 @using BlazorTest.Services
 @inject AuthService AuthService
@@ -27,27 +27,27 @@
 
                     <div class="mb-3">
                         <label for="username" class="form-label">Username</label>
-                        <InputText id="username" @bind-Value="loginModel.Username" class="form-control" disabled="@AppState.IsLoading" />
+                        <InputText id="username" @bind-Value="loginModel.Username" class="form-control" disabled="@isLoggingIn" />
                         <ValidationMessage For="@(() => loginModel.Username)" />
                     </div>
 
                     <div class="mb-3">
                         <label for="password" class="form-label">Password</label>
-                        <InputText id="password" type="password" @bind-Value="loginModel.Password" class="form-control" disabled="@AppState.IsLoading" />
+                        <InputText id="password" type="password" @bind-Value="loginModel.Password" class="form-control" disabled="@isLoggingIn" />
                         <ValidationMessage For="@(() => loginModel.Password)" />
                     </div>
 
                     <div class="mb-3 form-check">
-                        <InputCheckbox id="rememberMe" @bind-Value="loginModel.RememberMe" class="form-check-input" disabled="@AppState.IsLoading" />
+                        <InputCheckbox id="rememberMe" @bind-Value="loginModel.RememberMe" class="form-check-input" disabled="@isLoggingIn" />
                         <label class="form-check-label" for="rememberMe">Remember me</label>
                     </div>
 
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary" disabled="@AppState.IsLoading">
-                            @if (AppState.IsLoading)
+                        <button type="submit" class="btn btn-primary" disabled="@isLoggingIn">
+                            @if (isLoggingIn)
                             {
                                 <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                <span> Loading...</span>
+                                <span> Logging in...</span>
                             }
                             else
                             {
@@ -71,6 +71,7 @@
     // Login model for form binding
     private LoginModel loginModel = new LoginModel();
     private bool showError = false;
+    private bool isLoggingIn = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -90,23 +91,48 @@
 
     private async Task HandleLogin()
     {
-        Console.WriteLine($"Login.HandleLogin: Attempting to login user: {loginModel.Username}");
-
-        // Call authentication service to attempt login
-        var result = await AuthService.LoginAsync(loginModel.Username, loginModel.Password);
-        Console.WriteLine($"Login.HandleLogin: Login result: {result}");
-
-        if (result)
+        // Prevent multiple login attempts
+        if (isLoggingIn)
+            return;
+            
+        try
         {
-            // If login successful, navigate to home page
-            Console.WriteLine("Login.HandleLogin: Login successful, navigating to home");
-            NavigationManager.NavigateTo("");
+            // Set local loading state
+            isLoggingIn = true;
+            showError = false;
+            StateHasChanged();
+            
+            Console.WriteLine($"Login.HandleLogin: Attempting to login user: {loginModel.Username}");
+    
+            // Call authentication service to attempt login
+            var result = await AuthService.LoginAsync(loginModel.Username, loginModel.Password);
+            Console.WriteLine($"Login.HandleLogin: Login result: {result}");
+    
+            if (result)
+            {
+                // If login successful, navigate to home page
+                Console.WriteLine("Login.HandleLogin: Login successful, navigating to home");
+                // Ensure global loading state is reset
+                AppState.IsLoading = false;
+                NavigationManager.NavigateTo("");
+            }
+            else
+            {
+                // Show error message on failed login
+                Console.WriteLine("Login.HandleLogin: Login failed, showing error");
+                showError = true;
+            }
         }
-        else
+        catch (Exception ex)
         {
-            // Show error message on failed login
-            Console.WriteLine("Login.HandleLogin: Login failed, showing error");
+            Console.Error.WriteLine($"Login.HandleLogin: Error during login: {ex.Message}");
             showError = true;
+        }
+        finally
+        {
+            // Reset loading state
+            isLoggingIn = false;
+            StateHasChanged();
         }
     }
 }

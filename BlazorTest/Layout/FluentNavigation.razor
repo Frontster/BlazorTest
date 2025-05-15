@@ -1,0 +1,60 @@
+@using Microsoft.AspNetCore.Components.Routing
+@inject NavigationManager NavigationManager
+
+<div class="fluent-navigation-container">
+    <FluentBreadcrumb>
+        @foreach (var crumb in GetBreadcrumbs())
+        {
+            <FluentBreadcrumbItem Href="@crumb.Url">@crumb.Text</FluentBreadcrumbItem>
+        }
+    </FluentBreadcrumb>
+</div>
+
+@code {
+    private List<BreadcrumbItem> GetBreadcrumbs()
+    {
+        var breadcrumbs = new List<BreadcrumbItem>();
+        var uri = NavigationManager.Uri;
+        var baseUri = NavigationManager.BaseUri;
+        
+        // Add home page
+        breadcrumbs.Add(new BreadcrumbItem { Text = "Home", Url = baseUri });
+        
+        // If we're on the home page, just return
+        if (uri == baseUri || uri == baseUri + "index" || uri == baseUri + "index.html")
+        {
+            return breadcrumbs;
+        }
+        
+        // Get the relative path
+        var relativePath = uri.Substring(baseUri.Length);
+        
+        // Split the path into segments
+        var segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        
+        // Build up the breadcrumb trail
+        var currentPath = "";
+        foreach (var segment in segments)
+        {
+            currentPath += segment + "/";
+            var formattedSegment = char.ToUpper(segment[0]) + segment.Substring(1);
+            breadcrumbs.Add(new BreadcrumbItem { Text = formattedSegment, Url = baseUri + currentPath });
+        }
+        
+        return breadcrumbs;
+    }
+    
+    private class BreadcrumbItem
+    {
+        public string Text { get; set; } = string.Empty;
+        public string Url { get; set; } = string.Empty;
+    }
+}
+
+<style>
+    .fluent-navigation-container {
+        padding: 0.5rem 1rem;
+        background-color: var(--neutral-layer-1);
+        border-bottom: 1px solid var(--neutral-stroke-subtle);
+    }
+</style>

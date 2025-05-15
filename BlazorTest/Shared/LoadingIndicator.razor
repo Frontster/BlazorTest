@@ -1,13 +1,26 @@
 ﻿@if (IsLoading)
 {
-    <div class="@(Fullscreen ? "loading-overlay" : "loading-inline")">
+    <div class="@(Fullscreen ? "loading-overlay" : "loading-inline")"
+         @attributes="AdditionalAttributes">
         <div class="@(Fullscreen ? "spinner-container" : "spinner-container-inline")">
             <div class="spinner-border @SpinnerClass" role="status">
                 <span class="visually-hidden">Loading...</span>
             </div>
             @if (!string.IsNullOrEmpty(Message))
             {
-                <div class="mt-2">@Message</div>
+                <div class="mt-2 loading-message">@Message</div>
+            }
+            @if (ShowProgress && MaxProgress > 0)
+            {
+                <div class="progress mt-2" style="width: 200px;">
+                    <div class="progress-bar @ProgressClass" role="progressbar"
+                         style="width: @(CurrentProgress * 100 / MaxProgress)%"
+                         aria-valuenow="@CurrentProgress"
+                         aria-valuemin="0"
+                         aria-valuemax="@MaxProgress">
+                        @(Math.Round((double)CurrentProgress * 100 / MaxProgress))%
+                    </div>
+                </div>
             }
         </div>
     </div>
@@ -37,42 +50,34 @@
     /// </summary>
     [Parameter]
     public string SpinnerClass { get; set; } = "text-primary";
+
+    /// <summary>
+    /// Whether to show a progress bar
+    /// </summary>
+    [Parameter]
+    public bool ShowProgress { get; set; }
+
+    /// <summary>
+    /// Current progress value
+    /// </summary>
+    [Parameter]
+    public int CurrentProgress { get; set; }
+
+    /// <summary>
+    /// Maximum progress value
+    /// </summary>
+    [Parameter]
+    public int MaxProgress { get; set; } = 100;
+
+    /// <summary>
+    /// CSS class for the progress bar
+    /// </summary>
+    [Parameter]
+    public string ProgressClass { get; set; } = "bg-primary";
+
+    /// <summary>
+    /// Captures any additional attributes that aren't specifically captured
+    /// </summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object> AdditionalAttributes { get; set; } = new Dictionary<string, object>();
 }
-
-<style>
-    /* Fullscreen loading overlay */
-    .loading-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: rgba(255, 255, 255, 0.7);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-    }
-
-    /* Inline loading indicator */
-    .loading-inline {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        padding: 1rem;
-    }
-
-    /* Container for the spinner and message in fullscreen mode */
-    .spinner-container {
-        text-align: center;
-        background-color: white;
-        padding: 2rem;
-        border-radius: 0.5rem;
-        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-    }
-
-    /* Container for the spinner and message in inline mode */
-    .spinner-container-inline {
-        text-align: center;
-    }
-</style>

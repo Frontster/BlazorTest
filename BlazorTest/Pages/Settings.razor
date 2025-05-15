@@ -1,4 +1,4 @@
-﻿@page "/settings"
+@page "/settings"
 @using BlazorTest.Models
 @using BlazorTest.Services
 @inject DataService DataService
@@ -19,16 +19,17 @@ else
 {
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Settings - @AppState.SelectedCategory</h1>
-        <button class="btn btn-outline-primary" @onclick="RefreshSettingsAsync" disabled="@AppState.IsLoading">
-            @if (AppState.IsLoading)
+        <button class="btn btn-outline-primary" @onclick="RefreshSettingsAsync" disabled="@isRefreshing">
+            @if (isRefreshing)
             {
                 <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <span> Refreshing...</span>
             }
             else
             {
                 <span class="oi oi-reload" aria-hidden="true"></span>
+                <span> Refresh</span>
             }
-            Refresh
         </button>
     </div>
 
@@ -47,26 +48,26 @@ else
 
                             <div class="mb-3">
                                 <label for="displayName" class="form-label">Display Name</label>
-                                <InputText id="displayName" @bind-Value="settings.CategorySettings.DisplayName" class="form-control" disabled="@isSaving" />
+                                <InputText id="displayName" @bind-Value="settings.CategorySettings.DisplayName" class="form-control" disabled="@isSavingCategorySettings" />
                             </div>
 
                             <div class="mb-3 form-check">
-                                <InputCheckbox id="notifications" @bind-Value="settings.CategorySettings.Notifications" class="form-check-input" disabled="@isSaving" />
+                                <InputCheckbox id="notifications" @bind-Value="settings.CategorySettings.Notifications" class="form-check-input" disabled="@isSavingCategorySettings" />
                                 <label class="form-check-label" for="notifications">Enable Notifications</label>
                             </div>
 
                             <div class="mb-3 form-check">
-                                <InputCheckbox id="autoRefresh" @bind-Value="settings.CategorySettings.AutoRefresh" class="form-check-input" disabled="@isSaving" />
+                                <InputCheckbox id="autoRefresh" @bind-Value="settings.CategorySettings.AutoRefresh" class="form-check-input" disabled="@isSavingCategorySettings" />
                                 <label class="form-check-label" for="autoRefresh">Auto Refresh</label>
                             </div>
 
                             <div class="mb-3">
                                 <label for="refreshInterval" class="form-label">Refresh Interval (seconds)</label>
-                                <InputNumber id="refreshInterval" @bind-Value="settings.CategorySettings.RefreshInterval" class="form-control" disabled="@(!settings.CategorySettings.AutoRefresh || isSaving)" />
+                                <InputNumber id="refreshInterval" @bind-Value="settings.CategorySettings.RefreshInterval" class="form-control" disabled="@(!settings.CategorySettings.AutoRefresh || isSavingCategorySettings)" />
                             </div>
 
-                            <button type="submit" class="btn btn-primary" disabled="@isSaving">
-                                @if (isSaving)
+                            <button type="submit" class="btn btn-primary" disabled="@isSavingCategorySettings">
+                                @if (isSavingCategorySettings)
                                 {
                                     <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                                     <span> Saving...</span>
@@ -93,7 +94,7 @@ else
 
                             <div class="mb-3">
                                 <label for="theme" class="form-label">Theme</label>
-                                <InputSelect id="theme" @bind-Value="settings.UserPreferences.Theme" class="form-select" disabled="@isSaving">
+                                <InputSelect id="theme" @bind-Value="settings.UserPreferences.Theme" class="form-select" disabled="@isSavingUserPreferences">
                                     <option value="Light">Light</option>
                                     <option value="Dark">Dark</option>
                                     <option value="System">System Default</option>
@@ -102,7 +103,7 @@ else
 
                             <div class="mb-3">
                                 <label for="language" class="form-label">Language</label>
-                                <InputSelect id="language" @bind-Value="settings.UserPreferences.Language" class="form-select" disabled="@isSaving">
+                                <InputSelect id="language" @bind-Value="settings.UserPreferences.Language" class="form-select" disabled="@isSavingUserPreferences">
                                     <option value="English">English</option>
                                     <option value="Spanish">Spanish</option>
                                     <option value="French">French</option>
@@ -112,7 +113,7 @@ else
 
                             <div class="mb-3">
                                 <label for="pageSize" class="form-label">Items Per Page</label>
-                                <InputSelect id="pageSize" @bind-Value="settings.UserPreferences.PageSize" class="form-select" disabled="@isSaving">
+                                <InputSelect id="pageSize" @bind-Value="settings.UserPreferences.PageSize" class="form-select" disabled="@isSavingUserPreferences">
                                     <option value="10">10</option>
                                     <option value="20">20</option>
                                     <option value="30">30</option>
@@ -121,8 +122,8 @@ else
                                 </InputSelect>
                             </div>
 
-                            <button type="submit" class="btn btn-primary" disabled="@isSaving">
-                                @if (isSaving)
+                            <button type="submit" class="btn btn-primary" disabled="@isSavingUserPreferences">
+                                @if (isSavingUserPreferences)
                                 {
                                     <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                                     <span> Saving...</span>
@@ -159,7 +160,9 @@ else
 @code {
     private SettingsData? settings;
     private bool isAuthenticated;
-    private bool isSaving;
+    private bool isSavingCategorySettings;
+    private bool isSavingUserPreferences;
+    private bool isRefreshing;
     private bool showSavedNotification;
 
     protected override async Task OnInitializedAsync()
@@ -208,7 +211,25 @@ else
     /// </summary>
     private async Task RefreshSettingsAsync()
     {
-        await LoadSettingsAsync();
+        if (isRefreshing)
+            return;
+            
+        try
+        {
+            isRefreshing = true;
+            StateHasChanged();
+            
+            await LoadSettingsAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error refreshing settings: {ex.Message}");
+        }
+        finally
+        {
+            isRefreshing = false;
+            StateHasChanged();
+        }
     }
 
     /// <summary>
@@ -216,20 +237,39 @@ else
     /// </summary>
     private async Task SaveCategorySettings()
     {
-        isSaving = true;
-
-        // Simulate API call delay
-        await Task.Delay(1500);
-
-        // In a real app, this would make an API call to save the settings
-
-        isSaving = false;
-        showSavedNotification = true;
-
-        // Auto-hide notification after 3 seconds
-        await Task.Delay(3000);
-        showSavedNotification = false;
-        StateHasChanged();
+        if (isSavingCategorySettings)
+            return;
+            
+        try
+        {
+            // Set local saving state
+            isSavingCategorySettings = true;
+            StateHasChanged();
+            
+            // Simulate API call delay
+            await Task.Delay(1500);
+            
+            // In a real app, this would make an API call to save the settings
+            Console.WriteLine("Category settings saved successfully");
+            
+            // Show success notification
+            showSavedNotification = true;
+            StateHasChanged();
+            
+            // Auto-hide notification after 3 seconds
+            await Task.Delay(3000);
+            showSavedNotification = false;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error saving category settings: {ex.Message}");
+        }
+        finally
+        {
+            // Reset saving state
+            isSavingCategorySettings = false;
+            StateHasChanged();
+        }
     }
 
     /// <summary>
@@ -237,20 +277,39 @@ else
     /// </summary>
     private async Task SaveUserPreferences()
     {
-        isSaving = true;
-
-        // Simulate API call delay
-        await Task.Delay(1500);
-
-        // In a real app, this would make an API call to save the preferences
-
-        isSaving = false;
-        showSavedNotification = true;
-
-        // Auto-hide notification after 3 seconds
-        await Task.Delay(3000);
-        showSavedNotification = false;
-        StateHasChanged();
+        if (isSavingUserPreferences)
+            return;
+            
+        try
+        {
+            // Set local saving state
+            isSavingUserPreferences = true;
+            StateHasChanged();
+            
+            // Simulate API call delay
+            await Task.Delay(1500);
+            
+            // In a real app, this would make an API call to save the preferences
+            Console.WriteLine("User preferences saved successfully");
+            
+            // Show success notification
+            showSavedNotification = true;
+            StateHasChanged();
+            
+            // Auto-hide notification after 3 seconds
+            await Task.Delay(3000);
+            showSavedNotification = false;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error saving user preferences: {ex.Message}");
+        }
+        finally
+        {
+            // Reset saving state
+            isSavingUserPreferences = false;
+            StateHasChanged();
+        }
     }
 
     public void Dispose()

@@ -1,4 +1,4 @@
-﻿@using BlazorTest.Services
+@using BlazorTest.Services
 @using BlazorTest.Shared
 @inherits LayoutComponentBase
 @inject AuthService AuthService
@@ -8,13 +8,15 @@
 @implements IDisposable
 
 <div class="page">
-    <header>
-        <nav class="navbar navbar-expand-lg navbar-light bg-light">
-            <div class="container-fluid">
-                <a class="navbar-brand" href="">Blazor Learning App</a>
-                <button class="navbar-toggler" type="button" @onclick="ToggleNavMenu">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
+    <CascadingValue Value="IsAuthenticated">
+        <header>
+            <FluentStack Orientation="Orientation.Vertical" Width="100%">
+                <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                    <div class="container-fluid">
+                        <FluentButton Appearance="Appearance.Lightweight" href="" class="navbar-brand">Blazor Learning App</FluentButton>
+                        <button class="navbar-toggler" type="button" @onclick="ToggleNavMenu">
+                            <span class="navbar-toggler-icon"></span>
+                        </button>
 
                 <div class="@NavMenuCssClass navbar-collapse">
                     @if (IsAuthenticated)
@@ -62,11 +64,11 @@
                             <div class="me-3">
                                 <span>Welcome, @UserName</span>
                             </div>
-                            <button class="btn btn-sm btn-outline-dark" @onclick="LogoutAsync" disabled="@AppState.IsLoading">
-                                @if (AppState.IsLoading)
+                            <button class="btn btn-sm btn-outline-dark" @onclick="LogoutAsync" disabled="@isLoggingOut">
+                                @if (isLoggingOut)
                                 {
                                     <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                    <span> Loading...</span>
+                                    <span> Logging out...</span>
                                 }
                                 else
                                 {
@@ -88,17 +90,33 @@
                 </div>
             </div>
         </nav>
-    </header>
+        <FluentNavigation />
+            </FluentStack>
+        </header>
 
-    <main class="container-fluid py-4">
-        <!-- Global Loading Indicator - Shows whenever AppState.IsLoading is true -->
-        <LoadingIndicator IsLoading="@AppState.IsLoading" Fullscreen="true" Message="Loading content..." />
+        <div class="d-flex">
+            <aside class="fluent-sidebar">
+                <FluentRouteNav />
+            </aside>
 
-        <!-- Main Content Area -->
-        <div class="@(AppState.IsLoading ? "content-loading" : "")">
-            @Body
+            <main class="container-fluid py-4 flex-grow-1">
+                <FluentCard Width="100%" Height="100%" class="position-relative">
+                    @if (isPageLoading)
+                    {
+                        <div class="loading-overlay">
+                            <FluentProgressRing />
+                        </div>
+                    }
+                    <div class="@(isPageLoading ? "content-loading" : "")">
+                        @if (showPageContent || NavigationManager.Uri.Contains("login", StringComparison.OrdinalIgnoreCase))
+                        {
+                            @Body
+                        }
+                    </div>
+                </FluentCard>
+            </main>
         </div>
-    </main>
+    </CascadingValue>
 </div>
 
 @code {
@@ -106,6 +124,9 @@
     private string UserName { get; set; } = string.Empty;
     private bool collapseNavMenu = true;
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+    private bool isLoggingOut = false;
+    private bool isPageLoading = true; // Start with page loading
+    private bool showPageContent = false; // Don't show content until authenticated and loaded
 
     // Property for binding to the category dropdown
     private string SelectedCategory
@@ -125,32 +146,150 @@
 
     protected override async Task OnInitializedAsync()
     {
-        Console.WriteLine("MainLayout.OnInitializedAsync called");
-        // Check authentication status and get user info
-        IsAuthenticated = await AuthService.IsAuthenticatedAsync();
-        Console.WriteLine($"Authentication status: {IsAuthenticated}");
-
-        if (IsAuthenticated)
-        {
-            UserName = await AuthService.GetUserNameAsync();
-            Console.WriteLine($"User logged in: {UserName}");
-        }
-
-        // Subscribe to AppState changes
+        Console.WriteLine("MainLayout.OnInitializedAsync: Initializing");
+        
+        // Subscribe to app state changes
         AppState.OnChange += AppStateChanged;
-
-        // Redirect to login if not authenticated and not already on login page
-        if (!IsAuthenticated && !NavigationManager.Uri.Contains("login", StringComparison.OrdinalIgnoreCase))
+        
+        // Reset any lingering loading states
+        AppState.IsLoading = false;
+        isPageLoading = false;
+        
+        // Initial authentication check
+        await UpdateAuthenticationState();
+        
+        // Subscribe to navigation location changes
+        NavigationManager.LocationChanged += HandleLocationChanged;
+    }
+    
+    private async void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        Console.WriteLine($"MainLayout.HandleLocationChanged: Navigation to {e.Location}");
+        
+        // Skip setting loading state for login page
+        if (!e.Location.Contains("login", StringComparison.OrdinalIgnoreCase))
         {
-            Console.WriteLine("Not authenticated, redirecting to login");
-            NavigationManager.NavigateTo("login");
+            // Set loading state for page transition
+            isPageLoading = true;
+            StateHasChanged();
+            
+            // Short delay to allow UI to update
+            await Task.Delay(10);
+            
+            // Check authentication status on navigation
+            await CheckAuthenticationAsync();
+        }
+        else
+        {
+            // Always reset loading states for login page
+            isPageLoading = false;
+            AppState.IsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CheckAuthenticationAsync()
+    {
+        try
+        {
+            // Check if we're on the login page
+            if (NavigationManager.Uri.Contains("login", StringComparison.OrdinalIgnoreCase))
+            {
+                // Don't check authentication on login page
+                isPageLoading = false;
+                return;
+            }
+            
+            // Check authentication status
+            var isAuthenticated = await AuthService.IsAuthenticatedAsync();
+            
+            // If not authenticated and not on login page, redirect to login
+            if (!isAuthenticated)
+            {
+                Console.WriteLine("Not authenticated, redirecting to login");
+                NavigationManager.NavigateTo("login");
+                return;
+            }
+            
+            // Update authentication state
+            await UpdateAuthenticationState();
+        }
+        finally
+        {
+            // Always reset loading states when done
+            isPageLoading = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task UpdateAuthenticationState()
+    {
+        try
+        {
+            IsAuthenticated = await AuthService.IsAuthenticatedAsync();
+            Console.WriteLine($"Authentication status updated: {IsAuthenticated}");
+
+            if (IsAuthenticated)
+            {
+                UserName = await AuthService.GetUserNameAsync();
+                Console.WriteLine($"User logged in: {UserName}");
+                showPageContent = true;
+            }
+            else
+            {
+                UserName = string.Empty;
+                showPageContent = false;
+            }
+        }
+        finally
+        {
+            // End loading state
+            isPageLoading = false;
+            StateHasChanged();
         }
     }
 
     private void AppStateChanged()
     {
-        Console.WriteLine("AppState changed, calling StateHasChanged");
-        InvokeAsync(StateHasChanged);
+        Console.WriteLine("AppState changed, updating authentication state");
+        // Use InvokeAsync to ensure we're on the UI thread and properly handle async operations
+        InvokeAsync(async () =>
+        {
+            try
+            {
+                // Only set loading state if we're not already in a loading state
+                // This prevents potential infinite loops
+                if (AppState.IsAuthenticated && !string.IsNullOrEmpty(AppState.SelectedCategory) && !isPageLoading)
+                {
+                    isPageLoading = true;  // Use local loading state instead of AppState.IsLoading
+                    StateHasChanged();
+                }
+                
+                // Update authentication state when AppState changes
+                if (AppState.IsAuthenticated != IsAuthenticated)
+                {
+                    Console.WriteLine("Authentication state changed, updating UI");
+                    await UpdateAuthenticationState();
+                }
+                else
+                {
+                    // Always update the UI
+                    StateHasChanged();
+                }
+            }
+            finally
+            {
+                // Always reset loading state after a short delay
+                await Task.Delay(100); // Shorter delay to improve responsiveness
+                isPageLoading = false;
+                // Only reset AppState.IsLoading if we're the ones who set it
+                if (AppState.IsLoading)
+                {
+                    AppState.IsLoading = false;
+                }
+                StateHasChanged();
+            }
+        });
     }
 
     private void ToggleNavMenu()
@@ -164,16 +303,57 @@
     {
         var uri = NavigationManager.Uri;
         Console.WriteLine($"Refreshing current page: {uri}");
-        // This forces the components to reload by navigating to the same page
-        NavigationManager.NavigateTo(uri, forceLoad: false);
+        
+        // Use local loading state instead of global AppState.IsLoading
+        // This prevents potential infinite loops when AppState changes trigger more refreshes
+        isPageLoading = true;
+        StateHasChanged();
+        
+        // Use InvokeAsync to ensure we're on the UI thread
+        InvokeAsync(async () => 
+        {
+            try
+            {
+                // Let the AppState notification handle the refresh
+                // The components listening to AppState.OnChange will refresh their data
+                AppState.NotifyStateChanged();
+                
+                // Short delay to ensure data is loaded
+                await Task.Delay(100);
+            }
+            finally
+            {
+                // Always reset loading state
+                isPageLoading = false;
+                StateHasChanged();
+            }
+        });
     }
 
     private async Task LogoutAsync()
     {
-        Console.WriteLine("Logging out");
-        await AuthService.LogoutAsync();
-        IsAuthenticated = false;
-        NavigationManager.NavigateTo("login");
+        if (isLoggingOut)
+            return;
+            
+        try
+        {
+            isLoggingOut = true;
+            StateHasChanged();
+            
+            Console.WriteLine("Logging out");
+            await AuthService.LogoutAsync();
+            IsAuthenticated = false;
+            NavigationManager.NavigateTo("login");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error during logout: {ex.Message}");
+        }
+        finally
+        {
+            isLoggingOut = false;
+            StateHasChanged();
+        }
     }
 
     public void Dispose()
@@ -203,27 +383,40 @@
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 
+    /* Sidebar styling */
+    .fluent-sidebar {
+        width: 250px;
+        background-color: var(--neutral-layer-2);
+        box-shadow: 1px 0 3px rgba(0,0,0,0.1);
+        padding: 1rem 0;
+        height: calc(100vh - 120px); /* Adjust based on header height */
+        position: sticky;
+        top: 120px; /* Adjust based on header height */
+    }
+
     /* Loading overlay styling */
     .loading-overlay {
         position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: rgba(255, 255, 255, 0.7);
-        display: flex;
-        justify-content: center;
-        align-items: center;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
         z-index: 1000;
-    }
-
-    .spinner-container {
-        text-align: center;
     }
 
     /* Content styling when loading */
     .content-loading {
         opacity: 0.6;
         pointer-events: none;
+    }
+
+    /* FluentUI customizations */
+    ::deep .fluent-card {
+        padding: 1.5rem;
+        border-radius: 8px;
+    }
+
+    ::deep .navbar-brand.fluent-button {
+        font-size: 1.25rem;
+        font-weight: 500;
     }
 </style>

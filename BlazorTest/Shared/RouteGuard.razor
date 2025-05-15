@@ -1,0 +1,70 @@
+﻿@using Microsoft.AspNetCore.Components.Rendering
+@using BlazorTest.Services
+
+@inject NavigationManager NavigationManager
+@inject AuthService AuthService
+
+@if (isAuthenticated)
+{
+    @ChildContent
+}
+else if (isCheckingAuth)
+{
+    <div class="d-flex justify-content-center my-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Checking authentication...</span>
+        </div>
+        <span class="ms-2">Verifying access...</span>
+    </div>
+}
+else
+{
+    <div class="alert alert-warning">
+        <h4 class="alert-heading">Authentication Required</h4>
+        <p>You need to log in to access this page.</p>
+        <hr>
+        <button class="btn btn-primary" @onclick="NavigateToLogin">Log In</button>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public RenderFragment ChildContent { get; set; }
+
+    [Parameter]
+    public string[] Roles { get; set; } = Array.Empty<string>();
+
+    private bool isAuthenticated = false;
+    private bool isCheckingAuth = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckAuthenticationAsync();
+    }
+
+    private async Task CheckAuthenticationAsync()
+    {
+        Console.WriteLine($"RouteGuard: Checking authentication at {DateTime.Now:HH:mm:ss.fff}");
+        isCheckingAuth = true;
+        isAuthenticated = await AuthService.IsAuthenticatedAsync();
+
+        if (!isAuthenticated)
+        {
+            Console.WriteLine($"RouteGuard: Authentication check failed at {DateTime.Now:HH:mm:ss.fff}");
+        }
+        else if (Roles.Length > 0)
+        {
+            // Here you would implement role-based checks
+            // For now, assume all authenticated users have access
+            Console.WriteLine($"RouteGuard: User authenticated, role check would happen here at {DateTime.Now:HH:mm:ss.fff}");
+        }
+
+        isCheckingAuth = false;
+    }
+
+    private void NavigateToLogin()
+    {
+        var returnUrl = Uri.EscapeDataString(NavigationManager.Uri);
+        NavigationManager.NavigateTo($"login?returnUrl={returnUrl}");
+    }
+}

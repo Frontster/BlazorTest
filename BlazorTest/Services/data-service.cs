@@ -168,12 +168,14 @@ public class DataService
     /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
     private async Task SimulateApiCallAsync(int maxDelay, CancellationToken cancellationToken = default)
     {
-        // Use a lock to prevent multiple API calls from interfering with loading state
+        // Use a lock to prevent multiple API calls from interfering with each other
         await _apiCallLock.WaitAsync(cancellationToken);
 
         try
         {
-            _appStateService.IsLoading = true;
+            // Don't set global loading state - let components manage their own loading states
+            // _appStateService.IsLoading = true; // Removed global loading state
+            
             var delay = _random.Next(500, maxDelay);
             Console.WriteLine($"DataService: Simulating API call with {delay}ms delay");
 
@@ -192,7 +194,8 @@ public class DataService
         }
         finally
         {
-            _appStateService.IsLoading = false;
+            // Don't reset global loading state - let components manage their own loading states
+            // _appStateService.IsLoading = false; // Removed global loading state
             _apiCallLock.Release();
         }
     }

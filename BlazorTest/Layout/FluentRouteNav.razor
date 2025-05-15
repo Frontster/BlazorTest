@@ -1,0 +1,34 @@
+@using Microsoft.AspNetCore.Components.Routing
+@inject NavigationManager NavigationManager
+@inject AuthService AuthService
+
+<div class="fluent-route-nav">
+    <FluentNavMenu>
+        @if (IsAuthenticated)
+        {
+            <FluentNavLink Href="" Match="NavLinkMatch.All">Dashboard</FluentNavLink>
+            <FluentNavLink Href="products">Products</FluentNavLink>
+            <FluentNavLink Href="users">Users</FluentNavLink>
+            <FluentNavLink Href="reports">Reports</FluentNavLink>
+            <FluentNavLink Href="settings">Settings</FluentNavLink>
+        }
+        else
+        {
+            <FluentNavLink Href="login">Login</FluentNavLink>
+        }
+    </FluentNavMenu>
+</div>
+
+@code {
+    [CascadingParameter]
+    private bool IsAuthenticated { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // If IsAuthenticated is not set via cascading parameter, check auth status directly
+        if (!IsAuthenticated)
+        {
+            IsAuthenticated = await AuthService.IsAuthenticatedAsync();
+        }
+    }
+}
