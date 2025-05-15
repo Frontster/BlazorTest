@@ -12,16 +12,17 @@
 <RouteGuard>
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Products - @AppState.SelectedCategory</h1>
-        <button class="btn btn-outline-primary" @onclick="RefreshProductsAsync" disabled="@AppState.IsLoading">
-            @if (AppState.IsLoading)
+        <button class="btn btn-outline-primary" @onclick="RefreshProductsAsync" disabled="@isRefreshing">
+            @if (isRefreshing)
             {
                 <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <span> Refreshing...</span>
             }
             else
             {
                 <span class="oi oi-reload" aria-hidden="true"></span>
+                <span> Refresh</span>
             }
-            Refresh
         </button>
     </div>
 
@@ -69,6 +70,7 @@
 
 @code {
     private List<Product>? products;
+    private bool isRefreshing = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -106,7 +108,28 @@
     /// </summary>
     private async Task RefreshProductsAsync()
     {
-        await LoadProductsAsync();
+        if (isRefreshing)
+            return;
+            
+        try
+        {
+            // Set refreshing state
+            isRefreshing = true;
+            StateHasChanged();
+            
+            // Load the products data
+            await LoadProductsAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error refreshing products: {ex.Message}");
+        }
+        finally
+        {
+            // Reset refreshing state
+            isRefreshing = false;
+            StateHasChanged();
+        }
     }
 
     public void Dispose()

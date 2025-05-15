@@ -63,8 +63,8 @@
                             <div class="me-3">
                                 <span>Welcome, @UserName</span>
                             </div>
-                            <button class="btn btn-outline-danger" @onclick="LogoutAsync" disabled="@isPageLoading">
-                                @if (isPageLoading)
+                            <button class="btn btn-outline-danger" @onclick="LogoutAsync" disabled="@isLoggingOut">
+                                @if (isLoggingOut)
                                 {
                                     <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                                     <span> Logging out...</span>
@@ -129,6 +129,7 @@
     private bool collapseNavMenu = true;
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
     private bool isPageLoading = true;
+    private bool isLoggingOut = false;
     private bool showPageContent = false;
 
     // Convenience properties that delegate to AuthStateProvider
@@ -388,8 +389,8 @@
             
         try
         {
-            // Show loading state
-            isPageLoading = true;
+            // Show logging out state specifically for the logout button
+            isLoggingOut = true;
             StateHasChanged();
             
             Console.WriteLine("Logging out");
@@ -401,6 +402,7 @@
         }
         finally
         {
+            isLoggingOut = false;
             isPageLoading = false;
             StateHasChanged();
         }

@@ -13,16 +13,17 @@
 <RouteGuard>
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Users - @AppState.SelectedCategory</h1>
-        <button class="btn btn-outline-primary" @onclick="RefreshUsersAsync" disabled="@AppState.IsLoading">
-            @if (AppState.IsLoading)
+        <button class="btn btn-outline-primary" @onclick="RefreshUsersAsync" disabled="@isRefreshing">
+            @if (isRefreshing)
             {
                 <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <span> Refreshing...</span>
             }
             else
             {
                 <span class="oi oi-reload" aria-hidden="true"></span>
+                <span> Refresh</span>
             }
-            Refresh
         </button>
     </div>
 
@@ -119,6 +120,7 @@
 @code {
     private List<User>? users;
     private User? selectedUser;
+    private bool isRefreshing = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -155,7 +157,28 @@
     /// </summary>
     private async Task RefreshUsersAsync()
     {
-        await LoadUsersAsync();
+        if (isRefreshing)
+            return;
+            
+        try
+        {
+            // Set refreshing state
+            isRefreshing = true;
+            StateHasChanged();
+            
+            // Load the users data
+            await LoadUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error refreshing users: {ex.Message}");
+        }
+        finally
+        {
+            // Reset refreshing state
+            isRefreshing = false;
+            StateHasChanged();
+        }
     }
 
     /// <summary>

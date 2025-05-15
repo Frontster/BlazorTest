@@ -6,13 +6,13 @@
 @implements IDisposable
 
 <div class="route-guard-container">
-    @if (AuthState?.IsLoading == true)
+    @if (isCheckingAuth)
     {
         <div class="loading-container">
             <LoadingIndicator IsLoading="true" Message="Loading content..." Fullscreen="true" />
         </div>
     }
-    else if (AuthState?.IsAuthenticated != true)
+    else if (!isAuthenticated)
     {
         <div class="auth-required-container">
             <div class="alert alert-warning">
@@ -38,8 +38,11 @@
 
     [Parameter]
     public string[] Roles { get; set; } = Array.Empty<string>();
+    
+    private bool isCheckingAuth = true;
+    private bool isAuthenticated = false;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         Console.WriteLine("RouteGuard.OnInitialized: Initializing");
         
@@ -47,6 +50,7 @@
         if (AuthState != null)
         {
             AuthState.OnAuthStateChanged += HandleAuthStateChanged;
+            await CheckAuthenticationAsync();
         }
     }
 
@@ -59,11 +63,31 @@
         }
     }
 
-    private void HandleAuthStateChanged()
+    private async Task CheckAuthenticationAsync()
+    {
+        try
+        {
+            isCheckingAuth = true;
+            StateHasChanged();
+            
+            // Get authentication status from AuthState
+            if (AuthState != null)
+            {
+                isAuthenticated = AuthState.IsAuthenticated;
+            }
+        }
+        finally
+        {
+            isCheckingAuth = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async void HandleAuthStateChanged()
     {
         Console.WriteLine("RouteGuard.HandleAuthStateChanged: Auth state changed");
-        // Force UI update when auth state changes
-        InvokeAsync(StateHasChanged);
+        // Update authentication status when auth state changes
+        await CheckAuthenticationAsync();
     }
 
     private void NavigateToLogin()

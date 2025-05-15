@@ -98,12 +98,11 @@ public class AppStateService
     public void InitializeDefaults()
     {
         Console.WriteLine($"AppStateService: Initializing defaults at {DateTime.Now:HH:mm:ss.fff}");
-        // Set default category if not already set
-        if (string.IsNullOrEmpty(_selectedCategory))
-        {
-            _selectedCategory = "Category 1";
-            Console.WriteLine($"AppStateService: Set default category to {_selectedCategory}");
-        }
+        // Always set a default category to ensure consistency
+        _selectedCategory = "Category 1";
+        Console.WriteLine($"AppStateService: Set default category to {_selectedCategory}");
+        // Notify subscribers about the category change
+        NotifyStateChanged("SelectedCategory");
     }
 
     /// <summary>
